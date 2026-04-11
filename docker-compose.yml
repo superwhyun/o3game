@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # MongoDB
+  mongodb:
+    image: mongo:7
+    container_name: ogame-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: cosmic_empire
+    networks:
+      - ogame-network
+
+  # Redis (필요시 사용)
+  redis:
+    image: redis:7-alpine
+    container_name: ogame-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - ogame-network
+
+  # Backend Server
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ogame-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongodb:27017/cosmic_empire
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - CLIENT_URL=http://localhost:5173
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - ogame-network
+    command: npm run dev  # 개발용 (파일 변경시 자동 재시작)
+
+  # Frontend (Vite dev server)
+  client:
+    image: node:20-alpine
+    container_name: ogame-client
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./ogame-3d:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    command: sh -c "npm install && npm run dev -- --host"
+    depends_on:
+      - server
+    networks:
+      - ogame-network
+
+volumes:
+  mongo_data:
+
+networks:
+  ogame-network:
+    driver: bridge

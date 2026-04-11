@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cosmic Empire 3D - Holographic Interface</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- 3D Canvas -->
+  <div id="canvas-container"></div>
+  
+  <!-- Scanline Overlay -->
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
+  
+  <!-- Holographic Grid -->
+  <div class="holo-grid"></div>
+
+  <!-- Admin Setup Screen (shown when no admin exists) -->
+  <div id="admin-setup-screen" class="auth-screen hidden">
+    <div class="auth-container">
+      <div class="auth-logo">
+        <div class="logo-ring"></div>
+        <div class="logo-ring inner"></div>
+        <span class="logo-text">ADMIN</span>
+      </div>
+      <h1 class="auth-title">INITIAL SETUP</h1>
+      <p class="auth-subtitle">Create the first administrator account</p>
+      
+      <div class="auth-form-container">
+        <form id="admin-setup-form">
+          <div class="form-group">
+            <label>ADMIN USERNAME</label>
+            <input type="text" id="setup-username" placeholder="Enter admin username" autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label>EMAIL</label>
+            <input type="email" id="setup-email" placeholder="Enter email" autocomplete="email">
+          </div>
+          <div class="form-group">
+            <label>PASSWORD</label>
+            <input type="password" id="setup-password" placeholder="Enter password" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label>CONFIRM PASSWORD</label>
+            <input type="password" id="setup-confirm-password" placeholder="Confirm password" autocomplete="new-password">
+          </div>
+          <button type="submit" class="holo-action-btn auth-btn">CREATE ADMIN</button>
+        </form>
+      </div>
+      
+      <div class="auth-footer">
+        <p>v1.0.0 | First-time Setup</p>
+      </div>
+    </div>
+    
+    <div class="auth-bg-animation">
+      <div class="stars"></div>
+      <div class="planet"></div>
+    </div>
+  </div>
+
+  <!-- Login Screen (shown when not authenticated) -->
+  <div id="auth-screen" class="auth-screen hidden">
+    <div class="auth-container">
+      <div class="auth-logo">
+        <div class="logo-ring"></div>
+        <div class="logo-ring inner"></div>
+        <span class="logo-text">CE-3D</span>
+      </div>
+      <h1 class="auth-title">COSMIC EMPIRE</h1>
+      <p class="auth-subtitle">3D Space Strategy Game</p>
+      
+      <div class="auth-form-container">
+        <h2 id="auth-title">LOGIN</h2>
+        <form id="auth-form">
+
+          <div class="form-group">
+            <label>USERNAME</label>
+            <input type="text" id="auth-username" placeholder="Enter username" autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label>PASSWORD</label>
+            <input type="password" id="auth-password" placeholder="Enter password" autocomplete="current-password">
+          </div>
+          <div class="form-group" id="register-fields" style="display:none;">
+            <label>EMAIL</label>
+            <input type="email" id="auth-email-reg" placeholder="Enter email (for password recovery)" autocomplete="email">
+            <label style="margin-top: 10px;">CONFIRM PASSWORD</label>
+            <input type="password" id="auth-confirm-password" placeholder="Confirm password" autocomplete="new-password">
+          </div>
+          <button type="submit" class="holo-action-btn auth-btn" id="auth-submit">LOGIN</button>
+        </form>
+        <div class="auth-toggle">
+          <span id="auth-toggle-text">Don't have an account?</span>
+          <button class="link-btn" id="auth-toggle-btn">REGISTER</button>
+        </div>
+      </div>
+      
+      <div class="auth-footer">
+        <p>v1.0.0 | Server: Online</p>
+      </div>
+    </div>
+    
+    <!-- Background Animation -->
+    <div class="auth-bg-animation">
+      <div class="stars"></div>
+      <div class="planet"></div>
+    </div>
+  </div>
+
+  <!-- Main UI Layer (shown when authenticated) -->
+  <div id="ui-layer" class="ui-layer hidden">
+    
+    <!-- Top Holographic Header -->
+    <header class="holo-header">
+      <div class="header-left">
+        <div class="logo-holo">
+          <div class="logo-ring"></div>
+          <div class="logo-ring inner"></div>
+          <span class="logo-text">CE-3D</span>
+        </div>
+        <div class="time-display">
+          <span class="label">SYSTEM TIME</span>
+          <span class="value" id="system-time">00:00:00</span>
+        </div>
+      </div>
+      
+      <!-- Holographic Resource Bars -->
+      <div class="holo-resources">
+        <div class="resource-holo" data-resource="metal">
+          <div class="resource-ring">
+            <svg viewBox="0 0 100 100">
+              <circle class="bg" cx="50" cy="50" r="45"/>
+              <circle class="progress" cx="50" cy="50" r="45" id="metal-ring"/>
+            </svg>
+            <div class="resource-icon">⚙️</div>
+          </div>
+          <div class="resource-data">
+            <span class="resource-name">METAL</span>
+            <span class="resource-value" id="metal-count">0</span>
+            <span class="resource-rate" id="metal-rate">+0/h</span>
+            <span class="resource-fill" id="metal-fill">0.0%</span>
+          </div>
+        </div>
+        
+        <div class="resource-holo" data-resource="crystal">
+          <div class="resource-ring">
+            <svg viewBox="0 0 100 100">
+              <circle class="bg" cx="50" cy="50" r="45"/>
+              <circle class="progress" cx="50" cy="50" r="45" id="crystal-ring"/>
+            </svg>
+            <div class="resource-icon">💎</div>
+          </div>
+          <div class="resource-data">
+            <span class="resource-name">CRYSTAL</span>
+            <span class="resource-value" id="crystal-count">0</span>
+            <span class="resource-rate" id="crystal-rate">+0/h</span>
+            <span class="resource-fill" id="crystal-fill">0.0%</span>
+          </div>
+        </div>
+        
+        <div class="resource-holo" data-resource="deuterium">
+          <div class="resource-ring">
+            <svg viewBox="0 0 100 100">
+              <circle class="bg" cx="50" cy="50" r="45"/>
+              <circle class="progress" cx="50" cy="50" r="45" id="deuterium-ring"/>
+            </svg>
+            <div class="resource-icon">💧</div>
+          </div>
+          <div class="resource-data">
+            <span class="resource-name">DEUT</span>
+            <span class="resource-value" id="deuterium-count">0</span>
+            <span class="resource-rate" id="deuterium-rate">+0/h</span>
+            <span class="resource-fill" id="deuterium-fill">0.0%</span>
+          </div>
+        </div>
+        
+        <div class="resource-holo energy" data-resource="energy">
+          <div class="resource-ring">
+            <svg viewBox="0 0 100 100">
+              <circle class="bg" cx="50" cy="50" r="45"/>
+              <circle class="progress" cx="50" cy="50" r="45" id="energy-ring"/>
+            </svg>
+            <div class="resource-icon">⚡</div>
+          </div>
+          <div class="resource-data">
+            <span class="resource-name">POWER</span>
+            <span class="resource-value" id="energy-count">0</span>
+            <span class="resource-rate" id="energy-rate">0/0</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="header-right">
+        <div class="planet-status">
+          <span class="label">COORDINATES</span>
+          <span class="value" id="coords-display">[1:1:1]</span>
+        </div>
+        <!-- User Auth Section -->
+        <div class="user-section" id="user-section">
+          <button class="holo-btn-small" id="login-btn">
+            <span class="icon">👤</span>
+            <span class="label">LOGIN</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Left Control Panel - Holographic -->
+    <nav class="holo-sidebar left">
+      <div class="sidebar-glow"></div>
+      
+      <div class="nav-section">
+        <h3 class="section-title">
+          <span class="line"></span>
+          COMMAND
+        </h3>
+        <button class="holo-btn active" data-view="dashboard">
+          <div class="btn-glow"></div>
+          <span class="icon">📊</span>
+          <span class="label">대시보드</span>
+          <span class="shortcut">[1]</span>
+        </button>
+        <button class="holo-btn" data-view="buildings">
+          <div class="btn-glow"></div>
+          <span class="icon">🏗️</span>
+          <span class="label">건설</span>
+          <span class="shortcut">[2]</span>
+        </button>
+        <button class="holo-btn" data-view="research">
+          <div class="btn-glow"></div>
+          <span class="icon">🔬</span>
+          <span class="label">연구</span>
+          <span class="shortcut">[3]</span>
+        </button>
+        <button class="holo-btn" data-view="shipyard">
+          <div class="btn-glow"></div>
+          <span class="icon">🚀</span>
+          <span class="label">함선</span>
+          <span class="shortcut">[4]</span>
+        </button>
+      </div>
+      
+      <div class="nav-section">
+        <h3 class="section-title">
+          <span class="line"></span>
+          GALAXY
+        </h3>
+        <button class="holo-btn" data-view="galaxy">
+          <div class="btn-glow"></div>
+          <span class="icon">🌌</span>
+          <span class="label">은하 지도</span>
+          <span class="shortcut">[5]</span>
+        </button>
+        <button class="holo-btn" data-view="fleet">
+          <div class="btn-glow"></div>
+          <span class="icon">✈️</span>
+          <span class="label">함대</span>
+          <span class="shortcut">[6]</span>
+        </button>
+        <button class="holo-btn admin-only hidden" data-view="admin" id="admin-btn">
+          <div class="btn-glow"></div>
+          <span class="icon">⚙️</span>
+          <span class="label">관리자</span>
+          <span class="shortcut">[ADMIN]</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Content - Holographic Display -->
+    <main class="holo-main">
+      <!-- Dashboard Panel -->
+      <div class="holo-panel active" id="dashboard-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="indicator"></span>
+            <h2>TACTICAL DASHBOARD</h2>
+          </div>
+          <div class="panel-controls">
+            <span class="status-dot online"></span>
+            <span>LIVE</span>
+          </div>
+        </div>
+        
+        <div class="dashboard-grid">
+          <!-- Resource Charts -->
+          <div class="holo-card chart-card">
+            <div class="card-header">
+              <h3>RESOURCE FLOW</h3>
+              <span class="live-indicator">● LIVE</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="resource-chart"></canvas>
+            </div>
+          </div>
+          
+          <!-- Production Overview -->
+          <div class="holo-card stats-card">
+            <div class="card-header">
+              <h3>PRODUCTION METRICS</h3>
+            </div>
+            <div class="metrics-grid">
+              <div class="metric">
+                <span class="metric-label">Metal/h</span>
+                <span class="metric-value" id="dash-metal-rate">0</span>
+                <div class="metric-bar">
+                  <div class="fill" id="dash-metal-bar"></div>
+                </div>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Crystal/h</span>
+                <span class="metric-value" id="dash-crystal-rate">0</span>
+                <div class="metric-bar">
+                  <div class="fill" id="dash-crystal-bar"></div>
+                </div>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Deut/h</span>
+                <span class="metric-value" id="dash-deut-rate">0</span>
+                <div class="metric-bar">
+                  <div class="fill" id="dash-deut-bar"></div>
+                </div>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Energy</span>
+                <span class="metric-value" id="dash-energy-rate">0</span>
+                <div class="metric-bar">
+                  <div class="fill" id="dash-energy-bar"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Fleet Status -->
+          <div class="holo-card fleet-card">
+            <div class="card-header">
+              <h3>FLEET STATUS</h3>
+            </div>
+            <div class="fleet-visual" id="fleet-visual">
+              <div class="fleet-ring">
+                <div class="ship-count" id="total-ships">0</div>
+                <span>UNITS</span>
+              </div>
+              <div class="fleet-breakdown" id="fleet-breakdown"></div>
+            </div>
+          </div>
+          
+          <!-- Recent Activity -->
+          <div class="holo-card activity-card">
+            <div class="card-header">
+              <h3>SYSTEM LOG</h3>
+            </div>
+            <div class="activity-log" id="activity-log">
+              <div class="log-entry">
+                <span class="timestamp">[SYSTEM]</span>
+                <span class="message">System initialized...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Buildings Panel with Swiper -->
+      <div class="holo-panel hidden" id="buildings-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="indicator"></span>
+            <h2>CONSTRUCTION MODULE</h2>
+          </div>
+          <div class="category-selector">
+            <button class="cat-btn active" data-category="resources">RESOURCES</button>
+            <button class="cat-btn" data-category="facilities">FACILITIES</button>
+          </div>
+        </div>
+        
+        <!-- Swiper Container -->
+        <div class="swiper building-swiper">
+          <div class="swiper-wrapper" id="building-slides">
+            <!-- Slides injected by JS -->
+          </div>
+          <div class="swiper-pagination"></div>
+          <div class="swiper-button-prev"></div>
+          <div class="swiper-button-next"></div>
+        </div>
+        
+        <!-- Panel-specific Queue Display -->
+        <div class="panel-queue-section" id="buildings-queue-section">
+          <div class="panel-queue-title">
+            <span class="icon">🏗️</span>
+            건설 대기열
+          </div>
+          <div id="buildings-panel-queue" class="panel-queue-list"></div>
+        </div>
+      </div>
+
+      <!-- Research Panel with Swiper -->
+      <div class="holo-panel hidden" id="research-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="indicator"></span>
+            <h2>RESEARCH LAB</h2>
+          </div>
+        </div>
+        
+        <div class="swiper research-swiper">
+          <div class="swiper-wrapper" id="research-slides"></div>
+          <div class="swiper-pagination"></div>
+          <div class="swiper-button-prev"></div>
+          <div class="swiper-button-next"></div>
+        </div>
+
+        <!-- Panel-specific Queue Display -->
+        <div class="panel-queue-section" id="research-queue-section">
+          <div class="panel-queue-title">
+            <span class="icon">🔬</span>
+            연구 대기열
+          </div>
+          <div id="research-panel-queue" class="panel-queue-list"></div>
+        </div>
+      </div>
+
+      <!-- Shipyard Panel with Swiper -->
+      <div class="holo-panel hidden" id="shipyard-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="indicator"></span>
+            <h2>SHIPYARD</h2>
+          </div>
+          <div class="category-selector">
+            <button class="cat-btn active" data-ship-type="civil">CIVIL</button>
+            <button class="cat-btn" data-ship-type="military">MILITARY</button>
+          </div>
+        </div>
+        
+        <div class="swiper shipyard-swiper">
+          <div class="swiper-wrapper" id="shipyard-slides"></div>
+          <div class="swiper-pagination"></div>
+          <div class="swiper-button-prev"></div>
+          <div class="swiper-button-next"></div>
+        </div>
+
+        <!-- Panel-specific Queue Display -->
+        <div class="panel-queue-section" id="shipyard-queue-section">
+          <div class="panel-queue-title">
+            <span class="icon">🚀</span>
+            생산 대기열
+          </div>
+          <div id="shipyard-panel-queue" class="panel-queue-list"></div>
+        </div>
+      </div>
+
+      <!-- Galaxy Panel -->
+      <div class="holo-panel hidden" id="galaxy-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="indicator"></span>
+            <h2>GALAXY MAP</h2>
+          </div>
+          <div class="galaxy-nav">
+            <button class="nav-arrow" id="galaxy-prev">◀</button>
+            <span class="coords" id="galaxy-coords">[1:1]</span>
+            <button class="nav-arrow" id="galaxy-next">▶</button>
+          </div>
+        </div>
+        
+        <div class="galaxy-container">
+          <div class="galaxy-holo" id="galaxy-holo"></div>
+        </div>
+      </div>
+
+      <!-- Fleet Panel -->
+      <div class="holo-panel hidden" id="fleet-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="indicator"></span>
+            <h2>FLEET COMMAND</h2>
+          </div>
+        </div>
+        
+        <div class="fleet-grid" id="fleet-grid"></div>
+      </div>
+
+      <!-- Admin Panel -->
+      <div class="holo-panel hidden" id="admin-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="indicator red"></span>
+            <h2>ADMIN CONTROL CENTER</h2>
+          </div>
+          <div class="panel-controls">
+            <span class="status-dot warning"></span>
+            <span>PRIVILEGED ACCESS</span>
+          </div>
+        </div>
+        
+        <!-- Admin Tab Navigation -->
+        <div class="admin-tabs">
+          <button class="admin-tab active" data-tab="dashboard">
+            <span class="tab-icon">📊</span>
+            <span class="tab-label">Dashboard</span>
+          </button>
+          <button class="admin-tab" data-tab="users">
+            <span class="tab-icon">👥</span>
+            <span class="tab-label">User Management</span>
+            <span class="tab-badge" id="user-count-badge">0</span>
+          </button>
+          <button class="admin-tab" data-tab="settings">
+            <span class="tab-icon">⚙️</span>
+            <span class="tab-label">Game Settings</span>
+          </button>
+          <button class="admin-tab" data-tab="entity">
+            <span class="tab-icon">🏗️</span>
+            <span class="tab-label">Entity Config</span>
+          </button>
+        </div>
+        
+        <div class="admin-content">
+          
+          <!-- ═══════════════════════════════════════════════════════════════ -->
+          <!-- TAB 1: DASHBOARD -->
+          <!-- ═══════════════════════════════════════════════════════════════ -->
+          <div class="admin-tab-content active" id="tab-dashboard">
+            <div class="admin-grid">
+              <!-- Server Speed Control -->
+              <div class="holo-card admin-card">
+                <div class="card-header">
+                  <h3>SERVER SPEED</h3>
+                  <span class="badge" id="current-speed">1x</span>
+                </div>
+                <div class="speed-control">
+                  <div class="speed-buttons">
+                    <button class="speed-btn" data-speed="0.5">0.5x</button>
+                    <button class="speed-btn active" data-speed="1">1x</button>
+                    <button class="speed-btn" data-speed="2">2x</button>
+                    <button class="speed-btn" data-speed="5">5x</button>
+                    <button class="speed-btn" data-speed="10">10x</button>
+                    <button class="speed-btn" data-speed="100">100x</button>
+                  </div>
+                  <div class="speed-info">
+                    <span>Resource production, building time, and fleet speed will be multiplied</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Server Stats -->
+              <div class="holo-card admin-card">
+                <div class="card-header">
+                  <h3>SERVER STATISTICS</h3>
+                  <button class="refresh-btn" id="refresh-stats">↻</button>
+                </div>
+                <div class="stats-grid" id="admin-stats">
+                  <div class="stat-item">
+                    <span class="stat-label">Total Users</span>
+                    <span class="stat-value" id="stat-total-users">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">Online Now</span>
+                    <span class="stat-value" id="stat-online-users">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">Active Fleets</span>
+                    <span class="stat-value" id="stat-active-fleets">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">Battles Today</span>
+                    <span class="stat-value" id="stat-battles-today">-</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Maintenance Mode -->
+              <div class="holo-card admin-card">
+                <div class="card-header">
+                  <h3>MAINTENANCE</h3>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="maintenance-toggle">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="maintenance-controls">
+                  <textarea id="maintenance-message" placeholder="Maintenance message...">Server is under maintenance</textarea>
+                </div>
+              </div>
+              
+              <!-- Global Announcement -->
+              <div class="holo-card admin-card">
+                <div class="card-header">
+                  <h3>ANNOUNCEMENT</h3>
+                </div>
+                <div class="announcement-controls">
+                  <select id="announce-type">
+                    <option value="info">Info</option>
+                    <option value="warning">Warning</option>
+                    <option value="success">Success</option>
+                    <option value="error">Critical</option>
+                  </select>
+                  <textarea id="announce-message" placeholder="Enter announcement message..."></textarea>
+                  <button class="holo-action-btn" id="send-announcement">SEND TO ALL</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- ═══════════════════════════════════════════════════════════════ -->
+          <!-- TAB 2: USER MANAGEMENT -->
+          <!-- ═══════════════════════════════════════════════════════════════ -->
+          <div class="admin-tab-content" id="tab-users">
+            <div class="holo-card admin-card full-width">
+              <div class="card-header">
+                <h3>USER MANAGEMENT</h3>
+                <div class="search-box">
+                  <input type="text" id="user-search" placeholder="Search users by username or email...">
+                  <button id="search-users">🔍</button>
+                </div>
+              </div>
+              
+              <!-- Bulk Actions Bar -->
+              <div class="users-toolbar">
+                <div class="users-filter">
+                  <select id="users-filter-status">
+                    <option value="">All Status</option>
+                    <option value="online">Online</option>
+                    <option value="offline">Offline</option>
+                  </select>
+                  <select id="users-sort">
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="username">Username A-Z</option>
+                    <option value="lastlogin">Last Login</option>
+                  </select>
+                </div>
+                <div class="users-page-size">
+                  <label>Show:</label>
+                  <select id="users-page-size">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                  </select>
+                  <span>per page</span>
+                </div>
+              </div>
+              
+              <div class="users-table-container">
+                <table class="users-table" id="users-table">
+                  <thead>
+                    <tr>
+                      <th class="col-username">Username</th>
+                      <th class="col-status">Status</th>
+                      <th class="col-planets">Planets</th>
+                      <th class="col-resources">Resources</th>
+                      <th class="col-lastlogin">Last Login</th>
+                      <th class="col-actions">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="users-tbody">
+                    <tr><td colspan="6" style="text-align:center;padding:20px;">Click search to load users</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              
+              <!-- Pagination -->
+              <div class="pagination-container">
+                <div class="pagination-info">
+                  <span id="users-showing">Showing 0-0 of 0 users</span>
+                </div>
+                <div class="pagination" id="user-pagination"></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- ═══════════════════════════════════════════════════════════════ -->
+          <!-- TAB 3: GAME SETTINGS -->
+          <!-- ═══════════════════════════════════════════════════════════════ -->
+          <div class="admin-tab-content" id="tab-settings">
+            <div class="admin-grid">
+              <!-- Game Settings -->
+              <div class="holo-card admin-card wide">
+                <div class="card-header">
+                  <h3>GAME SETTINGS</h3>
+                </div>
+                <div class="settings-grid">
+                  <div class="setting-group">
+                    <h4>Resources</h4>
+                    <div class="setting-item">
+                      <label>Production Multiplier</label>
+                      <input type="number" id="setting-res-prod" value="1" min="0.1" max="10" step="0.1">
+                    </div>
+                    <div class="setting-item">
+                      <label>Storage Multiplier</label>
+                      <input type="number" id="setting-res-storage" value="1" min="0.1" max="10" step="0.1">
+                    </div>
+                    <div class="setting-item">
+                      <label>Starting Metal</label>
+                      <input type="number" id="setting-start-metal" value="500" min="0" step="100">
+                    </div>
+                    <div class="setting-item">
+                      <label>Starting Crystal</label>
+                      <input type="number" id="setting-start-crystal" value="300" min="0" step="100">
+                    </div>
+                    <div class="setting-item">
+                      <label>Starting Deuterium</label>
+                      <input type="number" id="setting-start-deuterium" value="100" min="0" step="100">
+                    </div>
+                  </div>
+                  
+                  <div class="setting-group">
+                    <h4>Buildings & Research</h4>
+                    <div class="setting-item">
+                      <label>Build Time Multiplier</label>
+                      <input type="number" id="setting-build-time" value="1" min="0.1" max="5" step="0.1">
+                    </div>
+                    <div class="setting-item">
+                      <label>Cost Multiplier</label>
+                      <input type="number" id="setting-build-cost" value="1" min="0.1" max="5" step="0.1">
+                    </div>
+                    <div class="setting-item">
+                      <label>Research Time Multiplier</label>
+                      <input type="number" id="setting-research-time" value="1" min="0.1" max="5" step="0.1">
+                    </div>
+                  </div>
+                  
+                  <div class="setting-group">
+                    <h4>Combat</h4>
+                    <div class="setting-item">
+                      <label>Debris Field %</label>
+                      <input type="number" id="setting-debris" value="30" min="0" max="100" step="5">
+                    </div>
+                    <div class="setting-item">
+                      <label>Max Rounds</label>
+                      <input type="number" id="setting-max-rounds" value="6" min="1" max="10">
+                    </div>
+                    <div class="setting-item">
+                      <label>Fleet Speed</label>
+                      <input type="number" id="setting-fleet-speed" value="1" min="0.1" max="10" step="0.1">
+                    </div>
+                  </div>
+                  
+                  <div class="setting-group">
+                    <h4>New Player</h4>
+                    <div class="setting-item">
+                      <label>Protection Days</label>
+                      <input type="number" id="setting-protection" value="7" min="0" max="30">
+                    </div>
+                    <div class="setting-item">
+                      <label>Starting Planet Slots</label>
+                      <input type="number" id="setting-start-planets" value="1" min="1" max="5">
+                    </div>
+                    <div class="setting-item">
+                      <label>Max Planets</label>
+                      <input type="number" id="setting-max-planets" value="9" min="1" max="20">
+                    </div>
+                  </div>
+                </div>
+                <button class="holo-action-btn" id="save-settings">SAVE SETTINGS</button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- ═══════════════════════════════════════════════════════════════ -->
+          <!-- TAB 4: ENTITY CONFIG -->
+          <!-- ═══════════════════════════════════════════════════════════════ -->
+          <div class="admin-tab-content" id="tab-entity">
+            <div class="holo-card admin-card full-width ec-card">
+              <!-- Header -->
+              <div class="ec-header">
+                <div class="ec-header-left">
+                  <h3 class="ec-title">ENTITY BASE CONFIG</h3>
+                  <span id="ec-dirty-badge" class="ec-badge" style="display:none;">0 PENDING</span>
+                </div>
+                <div class="ec-header-right">
+                  <span id="entity-config-message" class="ec-message" style="display:none;"></span>
+                  <button id="btn-preview-all" class="ec-btn ec-btn-secondary">🔍 PREVIEW</button>
+                  <button id="btn-save-entity-config" class="ec-btn ec-btn-primary">💾 SAVE</button>
+                  <button id="btn-reset-entity-config" class="ec-btn ec-btn-danger">↩ RESET</button>
+                </div>
+              </div>
+
+              <!-- Category tabs -->
+              <div class="ec-tabs">
+                <button class="ec-tab active" data-type="building">🏛 BUILDINGS</button>
+                <button class="ec-tab" data-type="ship">🚀 SHIPS</button>
+                <button class="ec-tab" data-type="research">🔬 RESEARCH</button>
+              </div>
+
+              <!-- Loading indicator -->
+              <div id="entity-config-loading" class="ec-loading" style="display:none;">
+                <span class="ec-spinner"></span>
+                <span>LOADING DATA...</span>
+              </div>
+
+              <!-- Entity cards grid -->
+              <div id="entity-config-grid" class="ec-grid">
+                <!-- Cards injected by JS -->
+              </div>
+            </div>
+            
+            <!-- Level Preview Modal -->
+            <div id="ec-preview-modal" class="ec-modal hidden">
+              <div class="ec-modal-content">
+                <div class="ec-modal-header">
+                  <h4 id="ec-preview-title">Level Cost Preview</h4>
+                  <button class="ec-modal-close">&times;</button>
+                </div>
+                <div class="ec-preview-formula">
+                  <span>Formula: <code id="ec-preview-formula-text">Base × Multiplier^(Level-1)</code></span>
+                </div>
+                <div class="ec-preview-table-wrap">
+                  <table class="ec-preview-table">
+                    <thead>
+                      <tr>
+                        <th>Level</th>
+                        <th>Metal</th>
+                        <th>Crystal</th>
+                        <th>Deuterium</th>
+                        <th>Time</th>
+                        <th>Total</th>
+                        <th>Tier Mult</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ec-preview-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Info Panel -->
+    <aside class="holo-sidebar right">
+      <div class="sidebar-glow"></div>
+      
+      <div class="info-section">
+        <h3 class="section-title">
+          <span class="line"></span>
+          PLANET DATA
+        </h3>
+        
+        <div class="planet-holo">
+          <div class="planet-scan-line"></div>
+          <div class="planet-visual" id="planet-visual"></div>
+          <div class="planet-data">
+            <div class="data-row">
+              <span class="label">NAME</span>
+              <span class="value" id="planet-name">Colony-1</span>
+            </div>
+            <div class="data-row">
+              <span class="label">DIAMETER</span>
+              <span class="value" id="planet-size">12,800km</span>
+            </div>
+            <div class="data-row">
+              <span class="label">TEMP RANGE</span>
+              <span class="value" id="planet-temp">-20°C ~ 40°C</span>
+            </div>
+            <div class="data-row">
+              <span class="label">POSITION</span>
+              <span class="value" id="planet-pos">4</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="info-section">
+        <h3 class="section-title">
+          <span class="line"></span>
+          QUEUE
+        </h3>
+        
+        <div class="queue-holo" id="queue-holo-sidebar">
+          <div class="queue-empty" id="queue-sidebar-empty">
+            <span class="blink">NO ACTIVE TASKS</span>
+          </div>
+          <div class="queue-list" id="queue-list-sidebar" style="display:none;"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Holographic Notifications -->
+  <div id="notification-container" class="holo-notifications"></div>
+
+  <!-- Build Queue -->
+  <div id="build-queue" class="build-queue hidden">
+    <div class="build-queue-header">
+      <h4>🚧 CONSTRUCTION QUEUE</h4>
+      <span class="queue-count" id="queue-count">0</span>
+    </div>
+    <div class="queue-list" id="queue-list">
+      <!-- Queue items will be inserted here -->
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div id="modal-overlay" class="holo-modal hidden">
+    <div class="modal-frame">
+      <div class="modal-corner tl"></div>
+      <div class="modal-corner tr"></div>
+      <div class="modal-corner bl"></div>
+      <div class="modal-corner br"></div>
+      <button class="modal-close">×</button>
+      <div class="modal-content" id="modal-content"></div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -18,7 +18,7 @@ const BuildingQueueSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['building', 'research', 'ship'],
+    enum: ['building', 'research', 'ship', 'defense'],
     required: true
   },
   itemId: {

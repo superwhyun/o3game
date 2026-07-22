@@ -78,7 +78,11 @@ class ApiService {
   }
   
   async getCurrentUser() {
-    return this.request('/api/auth/me');
+    const user = await this.request('/api/auth/me');
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    }
+    return user;
   }
   
   async logout() {
@@ -155,6 +159,26 @@ class ApiService {
     return this.request(`/api/queue/${queueId}`, {
       method: 'DELETE'
     });
+  }
+
+  async getGalaxySystem(galaxy, system) {
+    const query = new URLSearchParams({ galaxy: String(galaxy), system: String(system) });
+    return this.request(`/api/game/galaxy?${query.toString()}`);
+  }
+
+  async getFleetMovements() {
+    return this.request('/api/game/fleets');
+  }
+
+  async launchFleet({ mission, fleet, cargo, destination, speed = 100 }) {
+    return this.request('/api/game/fleets', {
+      method: 'POST',
+      body: JSON.stringify({ mission, fleet, cargo, destination, speed })
+    });
+  }
+
+  async getBattleReports() {
+    return this.request('/api/game/reports');
   }
 }
 

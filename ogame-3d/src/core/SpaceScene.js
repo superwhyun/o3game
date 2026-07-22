@@ -15,6 +15,7 @@ export class SpaceScene {
     this.camera = null;
     this.renderer = null;
     this.composer = null;
+    this.animationId = null; // Track RAF ID for thorough stopping
     this.planet = null;
     this.stars = null;
     this.nebula = null;
@@ -31,7 +32,9 @@ export class SpaceScene {
     this.frameInterval = 1000 / this.targetFPS;
     this.lastFrameTime = 0;
     this.isVisible = true;
-    this.isBatterySaving = false;
+    this.isBatterySaving = false; // Automatic battery saving
+    this.isEnergySavingMode = false; // Manual energy saving mode
+    this.paused = false;
     
     // Reduced quality for mobile/low-power
     this.pixelRatio = Math.min(window.devicePixelRatio, 1.5);
@@ -431,9 +434,72 @@ export class SpaceScene {
     document.addEventListener('visibilitychange', () => {
       this.isVisible = !document.hidden;
       if (this.isVisible) {
+        console.log('👁️ Tab visible - Starting 3D loop');
         this.lastFrameTime = performance.now();
+        if (!this.paused) {
+          this.startLoop();
+        } else if (this.isEnergySavingMode) {
+          this.renderFrame();
+        }
+      } else {
+        console.log('🌑 Tab hidden - Stopping 3D loop for battery saving');
+        this.stopLoop();
       }
     });
+  }
+
+  startLoop() {
+    if (this.animationId || !this.isVisible || this.paused || this.isEnergySavingMode) return;
+    this.lastFrameTime = performance.now();
+    this.animate(this.lastFrameTime);
+  }
+
+  stopLoop() {
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+
+  /**
+   * Manual Energy Saving Mode toggle
+   */
+  setEnergySavingMode(enabled) {
+    if (this.isEnergySavingMode === enabled) return;
+    this.isEnergySavingMode = enabled;
+    
+    if (enabled) {
+      this.targetFPS = 15; // Further reduce FPS
+      this.renderer.setPixelRatio(1.0); // Drop to standard resolution
+      
+      // Disable bloom pass for performance
+      if (this.composer && this.composer.passes.length > 1) {
+        this.savedPasses = [...this.composer.passes];
+        this.composer.passes = [this.composer.passes[0]]; // Keep only RenderPass
+      }
+
+      this.renderFrame();
+      this.stopLoop();
+      
+      console.log('🔋 Energy Saving Mode (MANUAL) - ON');
+    } else {
+      this.targetFPS = 30; // Return to optimized 30fps
+      this.renderer.setPixelRatio(this.pixelRatio);
+      
+      // Re-enable bloom pass
+      if (this.savedPasses) {
+        this.composer.passes = this.savedPasses;
+      }
+
+      if (this.isVisible && !this.paused) {
+        this.startLoop();
+      }
+      
+      console.log('⚡ Energy Saving Mode (MANUAL) - OFF');
+    }
+    
+    this.frameInterval = 1000 / this.targetFPS;
+    this.onResize(); // Force re-render with new pixel ratio
   }
   
   setupBatterySaving() {
@@ -505,14 +571,24 @@ export class SpaceScene {
       Math.floor(window.innerWidth * 0.5),
       Math.floor(window.innerHeight * 0.5)
     );
+
+    if (this.isEnergySavingMode) {
+      this.renderFrame();
+    }
+  }
+
+  renderFrame() {
+    if (!this.scene || !this.camera || !this.composer) return;
+    this.camera.lookAt(0, 0, 0);
+    this.composer.render();
   }
   
   // FPS CAPPED ANIMATION LOOP
   animate(currentTime) {
-    requestAnimationFrame((time) => this.animate(time));
+    this.animationId = requestAnimationFrame((time) => this.animate(time));
     
-    // Skip if tab is hidden
-    if (!this.isVisible) return;
+    // Skip if tab is hidden OR manually paused
+    if (!this.isVisible || this.paused || this.isEnergySavingMode) return;
     
     // FPS limiting
     const elapsed = currentTime - this.lastFrameTime;
@@ -550,7 +626,26 @@ export class SpaceScene {
     this.updateExplosions();
     
     // Render
-    this.composer.render();
+    this.renderFrame();
+  }
+
+  pause() {
+    if (this.paused) return;
+    this.paused = true;
+    this.stopLoop();
+    console.log('⏸️ SpaceScene Paused (Admin Mode)');
+  }
+
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.lastFrameTime = performance.now();
+    if (!this.isEnergySavingMode && this.isVisible) {
+      this.startLoop();
+    } else if (this.isEnergySavingMode) {
+      this.renderFrame();
+    }
+    console.log('▶️ SpaceScene Resumed');
   }
   
   destroy() {

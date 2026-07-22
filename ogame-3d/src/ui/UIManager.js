@@ -3,7 +3,7 @@ import { gameState } from '../core/GameState.js';
 import * as GameData from '../data/gameData.js';
 import { adminService } from '../services/AdminService.js';
 import { apiService } from '../services/ApiService.js';
-import { EntityConfigManager } from './EntityConfigManager.js';
+import { TechTreeManager } from './TechTreeManager.js';
 
 export class UIManager {
   constructor(spaceScene) {
@@ -159,6 +159,17 @@ export class UIManager {
       }
       
       console.log('[syncUserDataFromServer] Synced. GameState resources:', gameState.resources);
+
+      // 🔐 Check Admin access again after sync
+      const adminBtn = document.getElementById('admin-btn');
+      if (adminBtn) {
+        const AdminService = (await import('../services/adminService.js')).adminService;
+        if (AdminService.isAdmin()) {
+          adminBtn.classList.remove('hidden');
+        } else {
+          adminBtn.classList.add('hidden');
+        }
+      }
     } catch (err) {
       console.error('Failed to sync user data:', err);
     }
@@ -250,6 +261,8 @@ export class UIManager {
     this.shipTypeButtons = document.querySelectorAll('.cat-btn[data-ship-type]');
     this.modalOverlay = document.getElementById('modal-overlay');
     this.modalClose = document.querySelector('.modal-close');
+    this.esmToggleBtn = document.getElementById('esm-toggle');
+    this.esmStatusText = this.esmToggleBtn?.querySelector('.status-text');
   }
   
   bindEvents() {
@@ -289,6 +302,12 @@ export class UIManager {
     // Admin setup events
     const setupForm = document.getElementById('admin-setup-form');
     setupForm?.addEventListener('submit', (e) => this.handleAdminSetup(e));
+
+    // ESM Toggle
+    this.esmToggleBtn?.addEventListener('click', () => this.toggleEnergySavingMode());
+    
+    // Load ESM state
+    this.initEnergySavingMode();
   }
   
   setupGameStateListeners() {
@@ -325,6 +344,40 @@ export class UIManager {
     updateTime();
     setInterval(updateTime, 1000);
   }
+
+  initEnergySavingMode() {
+    const esmEnabled = localStorage.getItem('esm_enabled') === 'true';
+    if (esmEnabled) {
+      this.applyEnergySavingMode(true);
+    }
+  }
+
+  toggleEnergySavingMode() {
+    const isEnabled = document.body.classList.contains('esm-mode');
+    this.applyEnergySavingMode(!isEnabled);
+  }
+
+  applyEnergySavingMode(enabled) {
+    if (enabled) {
+      document.body.classList.add('esm-mode');
+      if (this.esmStatusText) this.esmStatusText.textContent = 'BATTERY SAVER';
+      localStorage.setItem('esm_enabled', 'true');
+    } else {
+      document.body.classList.remove('esm-mode');
+      if (this.esmStatusText) this.esmStatusText.textContent = 'PERFORMANCE';
+      localStorage.setItem('esm_enabled', 'false');
+    }
+
+    // Update SpaceScene if available
+    if (this.spaceScene) {
+      this.spaceScene.setEnergySavingMode(enabled);
+    }
+    
+    // Throttle UI updates
+    if (enabled) {
+      console.log('🐢 UI throttling enabled for battery saving');
+    }
+  }
   
   switchView(view) {
     this.currentView = view;
@@ -334,6 +387,16 @@ export class UIManager {
     if (this.panels[view]) {
       this.panels[view].classList.remove('hidden');
     }
+
+    // 🔋 Battery saving: Pause 3D scene when in admin mode or other full-screen overlays
+    if (this.spaceScene) {
+      if (view === 'admin' || view === 'galaxy') {
+        this.spaceScene.pause();
+      } else {
+        this.spaceScene.resume();
+      }
+    }
+
     if (view === 'galaxy') this.renderGalaxy();
     if (view === 'fleet') this.renderFleet();
     if (view === 'admin') this.initAdminPanel();
@@ -722,22 +785,63 @@ export class UIManager {
     return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
   }
   
-  renderGalaxy() {
+  async renderGalaxy() {
     const container = document.getElementById('galaxy-holo');
     if (!container) return;
     
-    container.innerHTML = '';
-    for (let i = 1; i <= 15; i++) {
-      const slot = document.createElement('div');
-      slot.className = 'galaxy-slot';
-      if (i === gameState.planet.planet) slot.classList.add('own');
-      
-      slot.innerHTML = '<span class="slot-number">' + i + '</span>';
-      slot.addEventListener('click', () => {
-        this.showNotification('Galaxy Scan', 'Position [1:1:' + i + '] selected', 'success');
-      });
-      
-      container.appendChild(slot);
+    container.replaceChildren();
+    const galaxy = gameState.planet.galaxy;
+    const system = gameState.planet.system;
+
+    try {
+      const galaxyData = await apiService.getGalaxySystem(galaxy, system);
+
+      for (const position of galaxyData.positions) {
+        const slot = document.createElement('button');
+        slot.type = 'button';
+        slot.className = 'galaxy-slot';
+        slot.classList.toggle('own', position.owner === 'self');
+        slot.classList.toggle('occupied', position.occupied);
+
+        const number = document.createElement('span');
+        number.className = 'slot-number';
+        number.textContent = String(position.position);
+        slot.appendChild(number);
+
+        if (position.planet) {
+          const label = document.createElement('span');
+          label.className = 'slot-owner';
+          label.textContent = position.owner === 'self'
+            ? position.planet.name
+            : position.planet.username;
+          slot.appendChild(label);
+        }
+
+        slot.addEventListener('click', () => {
+          const coordinates = `[${galaxyData.galaxy}:${galaxyData.system}:${position.position}]`;
+          if (position.owner === 'other') {
+            this.pendingFleetTarget = {
+              galaxy: galaxyData.galaxy,
+              system: galaxyData.system,
+              planet: position.position
+            };
+            this.switchView('fleet');
+            this.showNotification('Target selected', `${coordinates} is ready for a transport mission.`, 'success');
+            return;
+          }
+          const message = position.occupied
+            ? `${coordinates} ${position.owner === 'self' ? 'is your planet.' : 'is occupied.'}`
+            : `${coordinates} is unoccupied.`;
+          this.showNotification('Galaxy Scan', message, position.occupied ? 'success' : 'info');
+        });
+
+        container.appendChild(slot);
+      }
+    } catch (error) {
+      const state = document.createElement('div');
+      state.className = 'galaxy-state error';
+      state.textContent = `Unable to load galaxy data: ${error.message}`;
+      container.appendChild(state);
     }
   }
   
@@ -765,6 +869,204 @@ export class UIManager {
         '<span style="color:var(--holo-cyan);font-family:Orbitron;font-size:1.2rem;">' + count + ' UNITS</span></div>';
       container.appendChild(card);
     });
+
+    const composer = document.createElement('form');
+    composer.className = 'holo-card fleet-composer';
+    composer.style.display = 'grid';
+    composer.style.gap = '12px';
+    composer.style.padding = '20px';
+    composer.style.gridColumn = '1 / -1';
+
+    const title = document.createElement('h3');
+    title.textContent = 'FLEET MISSION';
+    composer.appendChild(title);
+
+    const missionField = document.createElement('label');
+    missionField.textContent = 'Mission';
+    const missionSelect = document.createElement('select');
+    missionSelect.name = 'mission';
+    for (const [value, label] of [['transport', 'Transport'], ['attack', 'Attack']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      missionSelect.appendChild(option);
+    }
+    missionField.appendChild(missionSelect);
+    composer.appendChild(missionField);
+
+    const target = this.pendingFleetTarget || {};
+    const coordinateFields = [
+      ['galaxy', 'Galaxy', target.galaxy ?? gameState.planet.galaxy],
+      ['system', 'System', target.system ?? gameState.planet.system],
+      ['planet', 'Planet', target.planet ?? '']
+    ];
+    const coordinates = document.createElement('div');
+    coordinates.style.display = 'grid';
+    coordinates.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+    coordinates.style.gap = '8px';
+    for (const [name, label, value] of coordinateFields) {
+      const field = this.createFleetNumberField(name, label, value, 1);
+      field.input.dataset.coordinate = name;
+      coordinates.appendChild(field.wrapper);
+    }
+    composer.appendChild(coordinates);
+
+    const fleetTitle = document.createElement('strong');
+    fleetTitle.textContent = 'Ships to send';
+    composer.appendChild(fleetTitle);
+    const fleetFields = document.createElement('div');
+    fleetFields.style.display = 'grid';
+    fleetFields.style.gridTemplateColumns = 'repeat(auto-fit, minmax(130px, 1fr))';
+    fleetFields.style.gap = '8px';
+    for (const [shipId, available] of ships) {
+      const field = this.createFleetNumberField(`fleet-${shipId}`, GameData.SHIPS[shipId]?.name || shipId, 0, 0, available);
+      field.input.dataset.ship = shipId;
+      fleetFields.appendChild(field.wrapper);
+    }
+    composer.appendChild(fleetFields);
+
+    const cargoTitle = document.createElement('strong');
+    cargoTitle.textContent = 'Cargo';
+    composer.appendChild(cargoTitle);
+    const cargoFields = document.createElement('div');
+    cargoFields.style.display = 'grid';
+    cargoFields.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+    cargoFields.style.gap = '8px';
+    for (const resource of ['metal', 'crystal', 'deuterium']) {
+      const field = this.createFleetNumberField(`cargo-${resource}`, resource.toUpperCase(), 0, 0, Math.floor(gameState.resources[resource] || 0));
+      field.input.dataset.cargo = resource;
+      cargoFields.appendChild(field.wrapper);
+    }
+    composer.appendChild(cargoFields);
+
+    const launchButton = document.createElement('button');
+    launchButton.type = 'submit';
+    launchButton.className = 'holo-action-btn';
+    launchButton.textContent = 'LAUNCH MISSION';
+    composer.appendChild(launchButton);
+
+    composer.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const fleet = Object.fromEntries(
+        [...composer.querySelectorAll('[data-ship]')]
+          .map((input) => [input.dataset.ship, Number(input.value)])
+          .filter(([, amount]) => Number.isSafeInteger(amount) && amount > 0)
+      );
+      const cargo = Object.fromEntries(
+        [...composer.querySelectorAll('[data-cargo]')]
+          .map((input) => [input.dataset.cargo, Number(input.value)])
+      );
+      const destination = Object.fromEntries(
+        [...composer.querySelectorAll('[data-coordinate]')]
+          .map((input) => [input.dataset.coordinate, Number(input.value)])
+      );
+
+      launchButton.disabled = true;
+      try {
+        const result = await apiService.launchFleet({
+          mission: missionSelect.value,
+          fleet,
+          cargo,
+          destination
+        });
+        gameState.syncFromServer(result.snapshot);
+        this.pendingFleetTarget = null;
+        this.showNotification('Fleet launched', `${result.fleet.mission} arrives at ${new Date(result.fleet.arrivalTime).toLocaleTimeString()}.`, 'success');
+        this.renderFleet();
+      } catch (error) {
+        this.showNotification('Mission failed', error.message, 'error');
+      } finally {
+        launchButton.disabled = false;
+      }
+    });
+
+    container.appendChild(composer);
+    this.renderFleetMovements(container);
+  }
+
+  async renderFleetMovements(container) {
+    const section = document.createElement('section');
+    section.className = 'holo-card fleet-movements';
+    section.style.gridColumn = '1 / -1';
+    section.style.padding = '20px';
+
+    const title = document.createElement('h3');
+    title.textContent = 'ACTIVE FLEET MOVEMENTS';
+    section.appendChild(title);
+
+    const content = document.createElement('div');
+    content.textContent = 'Loading fleet movements…';
+    section.appendChild(content);
+    container.appendChild(section);
+
+    try {
+      const [{ fleets }, { reports }] = await Promise.all([
+        apiService.getFleetMovements(),
+        apiService.getBattleReports()
+      ]);
+      content.replaceChildren();
+
+      if (fleets.length === 0) {
+        const emptyMovements = document.createElement('div');
+        emptyMovements.textContent = 'No fleet movements are active.';
+        content.appendChild(emptyMovements);
+      } else {
+        for (const fleet of fleets) {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.justifyContent = 'space-between';
+          row.style.gap = '12px';
+          row.style.padding = '8px 0';
+
+          const route = document.createElement('span');
+          route.textContent = `${fleet.mission.toUpperCase()} ${fleet.status} · [${fleet.origin.galaxy}:${fleet.origin.system}:${fleet.origin.planet}] → [${fleet.destination.galaxy}:${fleet.destination.system}:${fleet.destination.planet}]`;
+          const eta = document.createElement('span');
+          eta.textContent = `${fleet.remaining}s`;
+          row.append(route, eta);
+          content.appendChild(row);
+        }
+      }
+
+      const reportTitle = document.createElement('h4');
+      reportTitle.textContent = 'BATTLE REPORTS';
+      reportTitle.style.marginTop = '20px';
+      content.appendChild(reportTitle);
+
+      if (reports.length === 0) {
+        const emptyReports = document.createElement('div');
+        emptyReports.textContent = 'No battle reports yet.';
+        content.appendChild(emptyReports);
+      } else {
+        for (const report of reports.slice(0, 10)) {
+          const reportRow = document.createElement('div');
+          reportRow.style.padding = '8px 0';
+          const winner = report.result?.winner || 'draw';
+          const loot = report.result?.loot || {};
+          reportRow.textContent = `${new Date(report.battleTime).toLocaleString()} · ${winner.toUpperCase()} · Loot M:${loot.metal || 0} C:${loot.crystal || 0} D:${loot.deuterium || 0}`;
+          content.appendChild(reportRow);
+        }
+      }
+    } catch (error) {
+      content.textContent = `Unable to load fleet movements: ${error.message}`;
+    }
+  }
+
+  createFleetNumberField(name, label, value, min, max = '') {
+    const wrapper = document.createElement('label');
+    wrapper.style.display = 'grid';
+    wrapper.style.gap = '4px';
+    wrapper.textContent = label;
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.name = name;
+    input.value = String(value);
+    input.min = String(min);
+    input.step = '1';
+    if (max !== '') input.max = String(max);
+    wrapper.appendChild(input);
+
+    return { wrapper, input };
   }
   
   renderFleetVisual() {
@@ -830,10 +1132,9 @@ export class UIManager {
     this.setupAdminEvents();
     
     // Initialize entity config manager (once)
-    if (!this.entityConfigManager) {
-      this.entityConfigManager = new EntityConfigManager();
-      this.entityConfigManager.init();
-    }
+      // Entity Config Manager is now part of Tech Tree
+      this.entityConfigManager = true; // Flag to prevent multiple logs
+
     
     // Load initial data for active tab
     const activeTab = document.querySelector('.admin-tab.active')?.dataset.tab || 'dashboard';
@@ -874,6 +1175,14 @@ export class UIManager {
         break;
       case 'entity':
         // Entity config loads itself
+        break;
+      case 'techtree':
+        if (!this.techTreeManager) {
+          this.techTreeManager = new TechTreeManager();
+          this.techTreeManager.init();
+        } else {
+          this.techTreeManager.load();
+        }
         break;
     }
   }

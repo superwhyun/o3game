@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/src/ui/techtree.css">
 </head>
 <body>
   <!-- 3D Canvas -->
@@ -129,6 +130,10 @@
           <span class="label">SYSTEM TIME</span>
           <span class="value" id="system-time">00:00:00</span>
         </div>
+        <button class="esm-toggle" id="esm-toggle" title="Toggle Energy Saving Mode">
+          <span class="icon">⚡</span>
+          <span class="status-text">PERFORMANCE</span>
+        </button>
       </div>
       
       <!-- Holographic Resource Bars -->
@@ -514,9 +519,9 @@
             <span class="tab-icon">⚙️</span>
             <span class="tab-label">Game Settings</span>
           </button>
-          <button class="admin-tab" data-tab="entity">
-            <span class="tab-icon">🏗️</span>
-            <span class="tab-label">Entity Config</span>
+          <button class="admin-tab" data-tab="techtree">
+            <span class="tab-icon">🌀</span>
+            <span class="tab-label">Tech Tree</span>
           </button>
         </div>
         
@@ -763,69 +768,55 @@
             </div>
           </div>
           
+
+
           <!-- ═══════════════════════════════════════════════════════════════ -->
-          <!-- TAB 4: ENTITY CONFIG -->
+          <!-- TAB 5: TECH TREE EDITOR -->
           <!-- ═══════════════════════════════════════════════════════════════ -->
-          <div class="admin-tab-content" id="tab-entity">
-            <div class="holo-card admin-card full-width ec-card">
-              <!-- Header -->
-              <div class="ec-header">
-                <div class="ec-header-left">
-                  <h3 class="ec-title">ENTITY BASE CONFIG</h3>
-                  <span id="ec-dirty-badge" class="ec-badge" style="display:none;">0 PENDING</span>
+          <div class="admin-tab-content" id="tab-techtree">
+            <div class="tt-editor-container">
+              <!-- Toolbar -->
+              <div class="tt-toolbar">
+                <div class="tt-toolbar-left">
+                  <h3 class="tt-title">VISUAL TECH TREE EDITOR</h3>
+                  <div class="tt-stats">
+                    <span id="tt-node-count">0 Nodes</span>
+                    <span id="tt-edge-count">0 Connections</span>
+                  </div>
                 </div>
-                <div class="ec-header-right">
-                  <span id="entity-config-message" class="ec-message" style="display:none;"></span>
-                  <button id="btn-preview-all" class="ec-btn ec-btn-secondary">🔍 PREVIEW</button>
-                  <button id="btn-save-entity-config" class="ec-btn ec-btn-primary">💾 SAVE</button>
-                  <button id="btn-reset-entity-config" class="ec-btn ec-btn-danger">↩ RESET</button>
+                <div class="tt-toolbar-right">
+                  <span id="tt-message" class="tt-message"></span>
+                  <button id="tt-btn-auto-layout" class="tt-btn">🪄 AUTO LAYOUT</button>
+                  <button id="tt-btn-save" class="tt-btn tt-btn-primary">💾 SAVE CHANGES</button>
                 </div>
               </div>
 
-              <!-- Category tabs -->
-              <div class="ec-tabs">
-                <button class="ec-tab active" data-type="building">🏛 BUILDINGS</button>
-                <button class="ec-tab" data-type="ship">🚀 SHIPS</button>
-                <button class="ec-tab" data-type="research">🔬 RESEARCH</button>
+              <!-- Main Canvas Area -->
+              <div class="tt-canvas-wrap">
+                <div id="tt-canvas" class="tt-canvas">
+                  <!-- SVG Layer for lines -->
+                  <svg id="tt-svg-layer" class="tt-svg-layer"></svg>
+                  <!-- Content Layer for nodes -->
+                  <div id="tt-node-layer" class="tt-node-layer"></div>
+                </div>
+                
+                <!-- Zoom/Pan Controls -->
+                <div class="tt-controls">
+                  <button id="tt-btn-zoom-in">+</button>
+                  <button id="tt-btn-zoom-out">-</button>
+                  <button id="tt-btn-reset-view">⛶</button>
+                </div>
               </div>
 
-              <!-- Loading indicator -->
-              <div id="entity-config-loading" class="ec-loading" style="display:none;">
-                <span class="ec-spinner"></span>
-                <span>LOADING DATA...</span>
-              </div>
-
-              <!-- Entity cards grid -->
-              <div id="entity-config-grid" class="ec-grid">
-                <!-- Cards injected by JS -->
-              </div>
-            </div>
-            
-            <!-- Level Preview Modal -->
-            <div id="ec-preview-modal" class="ec-modal hidden">
-              <div class="ec-modal-content">
-                <div class="ec-modal-header">
-                  <h4 id="ec-preview-title">Level Cost Preview</h4>
-                  <button class="ec-modal-close">&times;</button>
+              <!-- Side Inspector (Properties) -->
+              <div id="tt-inspector" class="tt-inspector hidden">
+                <div class="tt-inspector-header">
+                  <h4 id="tt-inspector-name">Select an Entity</h4>
+                  <button id="tt-btn-close-inspector">×</button>
                 </div>
-                <div class="ec-preview-formula">
-                  <span>Formula: <code id="ec-preview-formula-text">Base × Multiplier^(Level-1)</code></span>
-                </div>
-                <div class="ec-preview-table-wrap">
-                  <table class="ec-preview-table">
-                    <thead>
-                      <tr>
-                        <th>Level</th>
-                        <th>Metal</th>
-                        <th>Crystal</th>
-                        <th>Deuterium</th>
-                        <th>Time</th>
-                        <th>Total</th>
-                        <th>Tier Mult</th>
-                      </tr>
-                    </thead>
-                    <tbody id="ec-preview-tbody"></tbody>
-                  </table>
+                <div class="tt-inspector-body" id="tt-inspector-body">
+                  <!-- Properties injected by JS -->
+                  <p class="empty-msg">Click a node to edit its properties and requirements.</p>
                 </div>
               </div>
             </div>

@@ -39,7 +39,7 @@ services:
       - PORT=3000
       - MONGODB_URI=mongodb://mongodb:27017/cosmic_empire
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET to a non-default value of at least 32 characters}
       - CLIENT_URL=http://localhost:5173
     volumes:
       - ./server:/app

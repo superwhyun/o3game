@@ -1,5 +1,5 @@
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { verifyUserToken } = require('../utils/authToken');
 
 // Regular auth middleware (no admin required)
 const authMiddleware = async (req, res, next) => {
@@ -10,7 +10,7 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'No token provided' });
     }
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = verifyUserToken(token);
     const user = await User.findById(decoded.userId);
     
     if (!user) {
@@ -33,7 +33,7 @@ const adminMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'No token provided' });
     }
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = verifyUserToken(token);
     const user = await User.findById(decoded.userId);
     
     if (!user || !user.isAdmin) {
@@ -56,7 +56,7 @@ const superAdminMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'No token provided' });
     }
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = verifyUserToken(token);
     const user = await User.findById(decoded.userId);
     
     if (!user || !user.isAdmin || user.adminRole !== 'superadmin') {

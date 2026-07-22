@@ -1,35 +1,18 @@
 const entityConfigService = require('../services/EntityConfigService');
 
-function scaleByTier(baseValue, level, tierMultipliers = [], fallbackMultiplier = null, field = 'costMult') {
+function scaleExponentially(baseValue, level, multiplier = null) {
   if (baseValue == null || isNaN(baseValue)) return 0;
   
   // Ensure level is a valid number
   const safeLevel = isNaN(level) ? 0 : Math.max(0, level);
   if (safeLevel <= 1) return Math.floor(baseValue);
 
-  if (!tierMultipliers || tierMultipliers.length === 0) {
-    const mult = fallbackMultiplier == null || isNaN(fallbackMultiplier) ? 1 : fallbackMultiplier;
-    return Math.floor(baseValue * Math.pow(mult, safeLevel - 1));
-  }
-
-  let totalMultiplier = 1;
-  let remainingLevels = safeLevel - 1;
-
-  for (const tier of tierMultipliers) {
-    if (remainingLevels <= 0) break;
-    const multiplier = tier[field] ?? fallbackMultiplier ?? 1;
-    const safeMult = isNaN(multiplier) ? 1 : multiplier;
-    const tierStart = tier.startLevel || 1;
-    const tierEnd = tier.endLevel || tierStart;
-    const levelsInTier = Math.min(remainingLevels, Math.max(0, tierEnd - tierStart + 1));
-    
-    totalMultiplier *= Math.pow(safeMult, levelsInTier);
-    remainingLevels -= levelsInTier;
-  }
-
-  const result = Math.floor(baseValue * totalMultiplier);
+  const mult = (multiplier == null || isNaN(multiplier) || multiplier < 1) ? 1.5 : multiplier;
+  const result = Math.floor(baseValue * Math.pow(mult, safeLevel - 1));
+  
   return isNaN(result) ? Math.floor(baseValue) : result;
 }
+
 
 function getEntityDefinition(entityType, entityId) {
   return entityConfigService.getEntity(entityType, entityId);
@@ -62,13 +45,14 @@ async function calculateBuildingCost(buildingId, level) {
   if (!definition) return null;
 
   const cost = {};
-  const baseCost = definition.costModel?.baseCost || {};
-  const tierMultipliers = definition.costModel?.tierMultipliers || [];
-  const fallbackMultiplier = definition.costModel?.costMultiplier ?? null;
+  const baseCost = (definition.costModel && definition.costModel.baseCost) ? definition.costModel.baseCost : {};
+  const costMultiplier = (definition.costModel && definition.costModel.costMultiplier !== undefined && definition.costModel.costMultiplier !== null) 
+    ? definition.costModel.costMultiplier 
+    : 1.5;
 
   for (const [resource, baseAmount] of Object.entries(baseCost)) {
     if (baseAmount > 0) {
-      cost[resource] = scaleByTier(baseAmount, level, tierMultipliers, fallbackMultiplier, 'costMult');
+      cost[resource] = scaleExponentially(baseAmount, level, costMultiplier);
     }
   }
 
@@ -79,15 +63,16 @@ async function calculateResearchCost(researchId, currentLevel) {
   const definition = getEntityDefinition('research', researchId);
   if (!definition) return null;
 
-  const targetLevel = currentLevel + 1;
+  const targetLevelForCost = currentLevel + 1;
   const cost = {};
-  const baseCost = definition.costModel?.baseCost || {};
-  const tierMultipliers = definition.costModel?.tierMultipliers || [];
-  const fallbackMultiplier = definition.costModel?.costMultiplier ?? null;
+  const baseCost = (definition.costModel && definition.costModel.baseCost) ? definition.costModel.baseCost : {};
+  const costMultiplier = (definition.costModel && definition.costModel.costMultiplier !== undefined && definition.costModel.costMultiplier !== null) 
+    ? definition.costModel.costMultiplier 
+    : 1.5;
 
   for (const [resource, baseAmount] of Object.entries(baseCost)) {
     if (baseAmount > 0) {
-      cost[resource] = scaleByTier(baseAmount, targetLevel, tierMultipliers, fallbackMultiplier, 'costMult');
+      cost[resource] = scaleExponentially(baseAmount, targetLevelForCost, costMultiplier);
     }
   }
 
@@ -95,7 +80,11 @@ async function calculateResearchCost(researchId, currentLevel) {
 }
 
 async function calculateShipCost(shipId, count = 1) {
-  const definition = getEntityDefinition('ship', shipId);
+  return calculateUnitCost('ship', shipId, count);
+}
+
+async function calculateUnitCost(entityType, entityId, count = 1) {
+  const definition = getEntityDefinition(entityType, entityId);
   if (!definition) return null;
 
   const cost = {};
@@ -115,19 +104,17 @@ function calculateQueueDuration(entityType, entityId, level, buildings = {}, cou
   const serverSpeed = options.serverSpeed || 1;
   const timeMultiplier = options.timeMultiplier || 1;
 
-  const baseTime = scaleByTier(
+  const baseTime = scaleExponentially(
     definition.timeModel?.baseTime ?? 0,
-    entityType === 'ship' ? 1 : level,
-    definition.timeModel?.tierMultipliers || [],
-    definition.timeModel?.timeMultiplier ?? definition.costModel?.costMultiplier ?? null,
-    'timeMult'
+    ['ship', 'defense'].includes(entityType) ? 1 : level,
+    definition.timeModel?.timeMultiplier ?? definition.costModel?.costMultiplier ?? 1.5
   );
 
   let duration = baseTime;
 
   duration = applyConstructionModifiers(duration, entityType, buildings);
 
-  if (entityType === 'ship') {
+  if (['ship', 'defense'].includes(entityType)) {
     duration *= count;
   }
 
@@ -143,7 +130,8 @@ module.exports = {
   calculateBuildingCost,
   calculateResearchCost,
   calculateShipCost,
+  calculateUnitCost,
   calculateQueueDuration,
   getEntityDefinition,
-  scaleByTier
+  scaleExponentially
 };

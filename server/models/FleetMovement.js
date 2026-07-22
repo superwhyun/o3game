@@ -29,6 +29,15 @@ const fleetMovementSchema = new mongoose.Schema({
     colonyShip: { type: Number, default: 0 }
   },
   
+  // Tactical 8-Wave Deck configuration for Combat Phase 1-8
+  fleetDeck: {
+    type: [{
+      type: { type: String, default: null },
+      count: { type: Number, default: 0 }
+    }],
+    default: () => Array(8).fill({ type: null, count: 0 })
+  },
+  
   // Resources being transported
   cargo: {
     metal: { type: Number, default: 0 },

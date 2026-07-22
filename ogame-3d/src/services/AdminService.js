@@ -22,7 +22,16 @@ class AdminService {
     });
     
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Request failed');
+    if (!response.ok) {
+      console.error('[AdminService] Request failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        endpoint,
+        error: data.error,
+        fullResponse: data
+      });
+      throw new Error(data.error || 'Request failed');
+    }
     return data;
   }
   

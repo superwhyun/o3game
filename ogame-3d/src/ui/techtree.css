@@ -1,0 +1,376 @@
+/* Tech Tree Editor Styles */
+.tt-editor-container {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 260px);
+    background: rgba(0, 10, 20, 0.7);
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+    margin-top: 10px;
+}
+
+
+
+/* 관리자 탭 활성화 시 테크트리 에디터 레이아웃 복구 */
+#tab-techtree.active {
+    display: flex !important;
+}
+
+/* Toolbar */
+.tt-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: rgba(0, 20, 40, 0.6);
+    border-bottom: 2px solid rgba(0, 255, 255, 0.2);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    z-index: 10;
+}
+
+.tt-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.1rem;
+    color: var(--holo-primary, #00ffff);
+    margin: 0;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+.tt-stats {
+    font-size: 0.8rem;
+    color: rgba(0, 255, 255, 0.6);
+    margin-top: 4px;
+}
+
+.tt-stats span {
+    margin-right: 15px;
+}
+
+.tt-btn {
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid var(--holo-primary, #00ffff);
+    color: var(--holo-primary, #00ffff);
+    padding: 6px 15px;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.tt-btn:hover {
+    background: rgba(0, 255, 255, 0.2);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+}
+
+.tt-btn-primary {
+    background: rgba(0, 255, 255, 0.2);
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+}
+
+.tt-message {
+    font-size: 0.85rem;
+    margin-right: 15px;
+}
+
+/* Canvas Area */
+.tt-canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background-image: 
+        radial-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+    cursor: grab;
+}
+
+.tt-canvas-wrap:active {
+    cursor: grabbing;
+}
+
+.tt-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 6000px;
+    height: 6000px;
+    transform-origin: 0 0;
+}
+
+.tt-svg-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.tt-connector {
+    fill: none;
+    stroke: rgba(0, 255, 255, 0.4);
+    stroke-width: 2;
+    transition: stroke 0.2s;
+}
+
+.tt-connector:hover {
+    stroke: rgba(0, 255, 255, 0.8);
+    stroke-width: 3;
+}
+
+.tt-connector.highlight-in {
+    stroke: #ff00ff;
+    stroke-width: 4;
+    filter: drop-shadow(0 0 8px rgba(255, 0, 255, 0.8));
+    stroke-dasharray: 8;
+    animation: connector-flow 1s linear infinite;
+    z-index: 10;
+}
+
+.tt-connector.highlight-out {
+    stroke: #00ffff;
+    stroke-width: 3;
+    filter: drop-shadow(0 0 5px rgba(0, 255, 255, 0.6));
+    stroke-dasharray: 8;
+    animation: connector-flow 1s linear reverse infinite;
+}
+
+@keyframes connector-flow {
+    from { stroke-dashoffset: 16; }
+    to { stroke-dashoffset: 0; }
+}
+
+.tt-node-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+}
+
+/* Node (Card) */
+.tt-node {
+    position: absolute;
+    width: 200px;
+    background: rgba(0, 20, 40, 0.85);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 4px;
+    padding: 10px;
+    cursor: move;
+    user-select: none;
+    transition: box-shadow 0.2s, border-color 0.2s;
+    overflow: hidden;
+}
+
+.tt-node:hover {
+    border-color: rgba(0, 255, 255, 0.8);
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+}
+
+.tt-node.selected {
+    border-color: #ff00ff;
+    box-shadow: 0 0 25px rgba(255, 0, 255, 0.4);
+    z-index: 5;
+}
+
+.tt-node.highlight-req {
+    border-color: #ff00ff !important;
+    border-width: 3px !important;
+    box-shadow: 0 0 20px rgba(255, 0, 255, 0.6) !important;
+    background: rgba(80, 0, 80, 0.7) !important;
+    z-index: 4;
+}
+
+.tt-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+    padding-bottom: 5px;
+}
+
+.tt-node-icon {
+    font-size: 1.2rem;
+}
+
+.tt-node-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tt-node-body {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.tt-node-type {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    background: rgba(255, 255, 255, 0.1);
+    margin-bottom: 5px;
+}
+
+.tt-node[data-type="building"] .tt-node-type { color: #00ffff; }
+.tt-node[data-type="research"] .tt-node-type { color: #ffff00; }
+.tt-node[data-type="ship"] .tt-node-type { color: #ff00ff; }
+
+/* Port handles */
+.tt-port {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: var(--holo-primary, #00ffff);
+    border-radius: 50%;
+    z-index: 3;
+}
+
+.tt-port.input { left: -5px; top: 50%; transform: translateY(-50%); }
+.tt-port.output { right: -5px; top: 50%; transform: translateY(-50%); }
+
+/* Inspector */
+.tt-inspector {
+    position: absolute;
+    right: 0;
+    top: 60px;
+    bottom: 0;
+    width: 320px;
+    background: rgba(0, 15, 30, 0.95);
+    border-left: 2px solid rgba(0, 255, 255, 0.3);
+    z-index: 20;
+    transform: translateX(0);
+    transition: transform 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.tt-inspector.hidden {
+    transform: translateX(100%);
+}
+
+.tt-inspector-header {
+    padding: 15px;
+    background: rgba(0, 255, 255, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tt-inspector-header h4 {
+    margin: 0;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.9rem;
+    color: #00ffff;
+}
+
+#tt-btn-close-inspector {
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+.tt-inspector-body {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.tt-prop-group {
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+    padding-bottom: 15px;
+}
+
+.tt-prop-group h5 {
+    color: rgba(0, 255, 255, 0.8);
+    margin: 0 0 10px 0;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.tt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.tt-field label {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.tt-field input, .tt-field select {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    color: #fff;
+    padding: 8px;
+    font-family: 'Rajdhani', sans-serif;
+}
+
+/* Controls */
+.tt-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    z-index: 5;
+}
+
+.tt-controls button {
+    width: 35px;
+    height: 35px;
+    background: rgba(0, 20, 40, 0.8);
+    border: 1px solid rgba(0, 255, 255, 0.4);
+    color: #00ffff;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tt-controls button:hover {
+    background: rgba(0, 255, 255, 0.2);
+}
+
+/* Ship Stats */
+.tt-stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.tt-select {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    color: #fff;
+    padding: 8px;
+    font-family: 'Rajdhani', sans-serif;
+    outline: none;
+}
+
+.tt-select option {
+    background: #001520;
+    color: #fff;
+}

@@ -1,5 +1,7 @@
 const EntityBaseConfig = require('../models/EntityBaseConfig');
 const { ENTITY_CATALOG_DEFAULTS } = require('../data/entityCatalogDefaults');
+const fs = require('fs').promises;
+const path = require('path');
 
 class EntityConfigService {
   constructor() {
@@ -56,20 +58,12 @@ class EntityConfigService {
           deuterium: costModel.baseCost?.deuterium ?? seed.costModel?.baseCost?.deuterium ?? 0
         },
         costMultiplier: costModel.costMultiplier ?? seed.costModel?.costMultiplier ?? null,
-        scalingMode: costModel.scalingMode || 'exponential',
-        tierMultipliers: this._clone((costModel.tierMultipliers || []).map((tier, index) => ({
-          ...(seed.costModel?.tierMultipliers?.[index] || {}),
-          ...tier
-        })))
+        scalingMode: costModel.scalingMode || 'exponential'
       },
       timeModel: {
         baseTime: timeModel.baseTime ?? seed.timeModel?.baseTime ?? null,
         timeMultiplier: timeModel.timeMultiplier ?? seed.timeModel?.timeMultiplier ?? null,
-        scalingMode: timeModel.scalingMode || 'exponential',
-        tierMultipliers: this._clone((timeModel.tierMultipliers || []).map((tier, index) => ({
-          ...(seed.timeModel?.tierMultipliers?.[index] || {}),
-          ...tier
-        })))
+        scalingMode: timeModel.scalingMode || 'exponential'
       },
       effects: this._clone({ ...(seed.effects || {}), ...(doc.effects || {}) }),
       stats: this._clone({ ...(seed.stats || {}), ...(doc.stats || {}) }),
@@ -95,7 +89,7 @@ class EntityConfigService {
     const ops = ENTITY_CATALOG_DEFAULTS.map((definition) => ({
       updateOne: {
         filter: { entityType: definition.entityType, entityId: definition.entityId },
-        update: { $setOnInsert: definition },
+        update: { $set: definition },
         upsert: true
       }
     }));
@@ -157,17 +151,17 @@ class EntityConfigService {
       icon: definition.display?.icon || '',
       category: definition.display?.category || '',
       description: definition.display?.description || '',
-      baseCost: definition.costModel?.baseCost || { metal: 0, crystal: 0, deuterium: 0 },
-      costMultiplier: definition.costModel?.costMultiplier ?? null,
-      buildTime: definition.timeModel?.baseTime ?? null,
-      tierMultipliers: definition.costModel?.tierMultipliers?.length
-        ? definition.costModel.tierMultipliers.map((tier, index) => ({
-            startLevel: tier.startLevel,
-            endLevel: tier.endLevel,
-            costMult: tier.costMult ?? definition.costModel.costMultiplier ?? null,
-            timeMult: definition.timeModel?.tierMultipliers?.[index]?.timeMult ?? definition.timeModel?.timeMultiplier ?? null
-          }))
-        : [],
+      display: definition.display || { name: definition.entityId, icon: '', category: '', description: '' },
+      costModel: {
+        baseCost: definition.costModel?.baseCost || { metal: 0, crystal: 0, deuterium: 0 },
+        costMultiplier: definition.costModel?.costMultiplier ?? 1.5,
+        scalingMode: definition.costModel?.scalingMode || 'exponential'
+      },
+      timeModel: {
+        baseTime: definition.timeModel?.baseTime ?? 0,
+        timeMultiplier: definition.timeModel?.timeMultiplier ?? definition.costModel?.costMultiplier ?? 1.5,
+        scalingMode: definition.timeModel?.scalingMode || 'exponential'
+      },
       requirements: definition.requirements || {},
       effects: definition.effects || {},
       stats: definition.stats || {},
@@ -176,6 +170,7 @@ class EntityConfigService {
       isOverridden: !definition.metadata?.seeded || (definition.revision || 1) > 1
     };
   }
+
 
   async updateEntity(entityType, entityId, patch, updatedBy) {
     const current = this.getEntity(entityType, entityId);
@@ -291,6 +286,8 @@ class EntityConfigService {
       await EntityBaseConfig.bulkWrite(ops);
       try {
         await this.reload();
+        // 💾 Sync back to source file for persistence across restarts
+        await this.syncToFile();
       } catch (error) {
         this.degraded = {
           failedAt: new Date(),
@@ -299,6 +296,138 @@ class EntityConfigService {
         throw error;
       }
       this.degraded = null;
+    }
+  }
+
+  async syncToFile() {
+    const fs = require('fs').promises;
+    const path = require('path');
+    const filePath = path.join(__dirname, '../data/entityCatalogDefaults.js');
+
+    console.log('[EntityConfigService] Syncing to file:', filePath);
+
+    // Group configs by type
+    const groups = { building: {}, research: {}, ship: {}, defense: {} };
+    const configs = [];
+    this.cache.forEach(map => map.forEach(cfg => configs.push(cfg)));
+    
+    configs.forEach(cfg => {
+      if (groups[cfg.entityType]) {
+        groups[cfg.entityType][cfg.entityId] = cfg;
+      }
+    });
+
+    // Helper to generate a constant object block
+    const generateConst = (name, type, extractor) => {
+      const entries = groups[type] || {};
+      const obj = {};
+      Object.keys(entries).forEach(id => {
+        obj[id] = extractor(entries[id]);
+      });
+      return `const ${name} = ${JSON.stringify(obj, null, 2)};`;
+    };
+
+    const content = `const { BUILDING_DEFAULTS, SHIP_DEFAULTS, RESEARCH_DEFAULTS, DEFENSE_DEFAULTS } = require('./entityDefaults');
+
+${generateConst('BUILDING_DISPLAY', 'building', c => c.display)}
+
+${generateConst('RESEARCH_DISPLAY', 'research', c => c.display)}
+
+${generateConst('SHIP_DISPLAY', 'ship', c => c.display)}
+
+${generateConst('DEFENSE_DISPLAY', 'defense', c => c.display)}
+
+${generateConst('BUILDING_REQUIREMENTS', 'building', c => c.requirements)}
+
+${generateConst('RESEARCH_REQUIREMENTS', 'research', c => c.requirements)}
+
+${generateConst('SHIP_REQUIREMENTS', 'ship', c => c.requirements)}
+
+${generateConst('DEFENSE_REQUIREMENTS', 'defense', c => c.requirements)}
+
+${generateConst('SHIP_STATS', 'ship', c => c.stats)}
+
+${generateConst('DEFENSE_STATS', 'defense', c => c.stats)}
+
+${generateConst('BUILDING_EFFECTS', 'building', c => c.effects)}
+
+
+function normalizeDefaults(entityType, defaults, displayMap, requirementsMap = {}, effectsMap = {}, statsMap = {}) {
+  return Object.entries(defaults).map(([entityId, def]) => ({
+    entityType,
+    entityId,
+    status: 'active',
+    schemaVersion: 2,
+    revision: 1,
+    display: {
+      name: displayMap[entityId]?.name || entityId,
+      icon: displayMap[entityId]?.icon || '',
+      category: displayMap[entityId]?.category || '',
+      description: displayMap[entityId]?.description || ''
+    },
+    requirements: requirementsMap[entityId] || {},
+    costModel: {
+      baseCost: {
+        metal: def.baseCost?.metal || 0,
+        crystal: def.baseCost?.crystal || 0,
+        deuterium: def.baseCost?.deuterium || 0
+      },
+      costMultiplier: def.costMultiplier ?? null,
+      scalingMode: 'exponential'
+    },
+    timeModel: {
+      baseTime: def.buildTime ?? null,
+      timeMultiplier: def.costMultiplier ?? null,
+      scalingMode: 'exponential'
+    },
+
+    effects: effectsMap[entityId] || {},
+    stats: statsMap[entityId] || {},
+    metadata: { seeded: true }
+  }));
+}
+
+const ENTITY_CATALOG_DEFAULTS = [
+  ...normalizeDefaults('building', BUILDING_DEFAULTS, BUILDING_DISPLAY, BUILDING_REQUIREMENTS, BUILDING_EFFECTS, {}),
+  ...normalizeDefaults('research', RESEARCH_DEFAULTS, RESEARCH_DISPLAY, RESEARCH_REQUIREMENTS, {}, {}),
+  ...normalizeDefaults('ship', SHIP_DEFAULTS, SHIP_DISPLAY, SHIP_REQUIREMENTS, {}, SHIP_STATS),
+  ...normalizeDefaults('defense', DEFENSE_DEFAULTS, DEFENSE_DISPLAY, DEFENSE_REQUIREMENTS, {}, DEFENSE_STATS)
+];
+
+module.exports = {
+  ENTITY_CATALOG_DEFAULTS
+};
+`;
+
+    // Create backup before saving
+    try {
+      const stats = await fs.stat(filePath);
+      if (stats.isFile()) {
+        const now = new Date();
+        const timestamp = now.getFullYear().toString() +
+          (now.getMonth() + 1).toString().padStart(2, '0') +
+          now.getDate().toString().padStart(2, '0') + '_' +
+          now.getHours().toString().padStart(2, '0') +
+          now.getMinutes().toString().padStart(2, '0') +
+          now.getSeconds().toString().padStart(2, '0');
+        
+        const ext = path.extname(filePath);
+        const base = path.basename(filePath, ext);
+        const dir = path.dirname(filePath);
+        const backupPath = path.join(dir, `${base}_${timestamp}${ext}`);
+        
+        await fs.copyFile(filePath, backupPath);
+        console.log(`[EntityConfigService] Created backup: ${backupPath}`);
+      }
+    } catch (err) {
+      console.warn(`[EntityConfigService] Backup failed: ${err.message}`);
+    }
+
+    try {
+      await fs.writeFile(filePath, content, 'utf8');
+      console.log(`[EntityConfigService] Synced overrides to ${filePath}`);
+    } catch (err) {
+      console.error(`[EntityConfigService] Failed to sync to file:`, err);
     }
   }
 

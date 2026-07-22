@@ -9,6 +9,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const entityConfigService = require('./services/EntityConfigService');
+const { getJwtSecret } = require('./utils/authToken');
 
 const app = express();
 const server = http.createServer(app);
@@ -46,12 +47,14 @@ app.use('/api/auth', authLimiter);
 app.use('/api/queue', apiLimiter);
 app.use('/api/', apiLimiter);
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Routes (rate limiting applied above)
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/queue', require('./routes/buildingQueue'));
+app.use('/api/game', require('./routes/game'));
 
 // Make io accessible in routes
 app.set('io', io);
@@ -77,6 +80,7 @@ app.use((err, req, res, next) => {
 
 async function startServer() {
   try {
+    getJwtSecret();
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cosmic_empire');
     console.log('✅ MongoDB connected');
     await entityConfigService.initialize();

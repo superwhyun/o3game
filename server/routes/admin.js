@@ -357,6 +357,52 @@ router.put('/entity-config/:type/:id', superAdminMiddleware, async (req, res) =>
   }
 });
 
+// Bulk update entity configs (MUST be above /:type to avoid being caught as a parameter)
+router.post('/entity-config/bulk', superAdminMiddleware, async (req, res) => {
+  try {
+    const { updates } = req.body; 
+    console.log(`[AdminAPI] Bulk update request received. Updates count: ${updates ? (Array.isArray(updates) ? updates.length : 'not an array') : 'missing'}`);
+    
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ error: 'updates array is required and must not be empty' });
+    }
+
+    const validTypes = ['building', 'ship', 'research', 'defense'];
+    
+    await entityConfigService.bulkUpdate(
+      updates.map((update) => {
+        if (!update.entityType || !validTypes.includes(update.entityType)) {
+          throw new Error(`Invalid entity type "${update.entityType}" for entity "${update.entityId}"`);
+        }
+        
+        // Construct a normalized update object that the service understands
+        const normalizedUpdate = { ...update };
+        
+        // Handle legacy top-level cost/time fields if they're not already in models
+        if (update.baseCost && !update.costModel) {
+          normalizedUpdate.costModel = { baseCost: update.baseCost };
+        }
+        if (update.buildTime && !update.timeModel) {
+          normalizedUpdate.timeModel = { baseTime: update.buildTime };
+        }
+        
+        return normalizedUpdate;
+      }),
+      req.user._id
+    );
+
+    req.app.get('io').emit('entityConfigUpdated', {
+      entityType: 'bulk',
+      revision: entityConfigService.getRevision()
+    });
+
+    console.log(`[AdminAPI] Bulk update successful. Updated ${updates.length} configs.`);
+    res.json({ message: `Updated ${updates.length} entity configs`, revision: entityConfigService.getRevision() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/entity-config/:type', superAdminMiddleware, async (req, res) => {
   try {
     const { type } = req.params;
@@ -408,42 +454,6 @@ router.post('/entity-config/:type', superAdminMiddleware, async (req, res) => {
   }
 });
 
-// Bulk update entity configs
-router.post('/entity-config/bulk', superAdminMiddleware, async (req, res) => {
-  try {
-    const { updates } = req.body; // Array of { entityType, entityId, baseCost, costMultiplier, buildTime }
-    if (!Array.isArray(updates) || updates.length === 0) {
-      return res.status(400).json({ error: 'updates array is required' });
-    }
-
-    await entityConfigService.bulkUpdate(
-      updates.map((update) => ({
-        entityType: update.entityType,
-        entityId: update.entityId,
-        costModel: {
-          baseCost: update.baseCost,
-          costMultiplier: update.costMultiplier ?? null,
-          tierMultipliers: update.tierMultipliers
-        },
-        timeModel: {
-          baseTime: update.buildTime ?? null,
-          timeMultiplier: update.timeMultiplier ?? null,
-          tierMultipliers: update.tierMultipliers
-        }
-      })),
-      req.user._id
-    );
-
-    req.app.get('io').emit('entityConfigUpdated', {
-      entityType: 'bulk',
-      revision: entityConfigService.getRevision()
-    });
-
-    res.json({ message: `Updated ${updates.length} entity configs`, revision: entityConfigService.getRevision() });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // Reset entity configs for a type back to hardcoded defaults (deletes DB overrides)
 router.post('/entity-config/reset/:type', superAdminMiddleware, async (req, res) => {

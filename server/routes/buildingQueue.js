@@ -8,7 +8,7 @@ const { settleUserState, activateNextQueues } = require('../services/GameStateSe
 const {
   calculateBuildingCost,
   calculateResearchCost,
-  calculateShipCost,
+  calculateUnitCost,
   calculateQueueDuration,
   getEntityDefinition
 } = require('../utils/gameCalculations');
@@ -238,10 +238,13 @@ router.post('/research', authMiddleware, async (req, res) => {
 // POST build ship
 router.post('/ship', authMiddleware, async (req, res) => {
   try {
-    const { shipId, count = 1, planetId = '0' } = req.body;
+    const { shipId, count = 1, planetId = '0', entityType = 'ship' } = req.body;
+    if (!['ship', 'defense'].includes(entityType)) {
+      return res.status(400).json({ error: 'Invalid unit type' });
+    }
     
-    const definition = getEntityDefinition('ship', shipId);
-    if (!definition) return res.status(400).json({ error: 'Invalid ship' });
+    const definition = getEntityDefinition(entityType, shipId);
+    if (!definition) return res.status(400).json({ error: 'Invalid unit' });
     
     const user = await User.findById(req.user._id);
     const settled = await settleUserState(user, new Date());
@@ -250,7 +253,7 @@ router.post('/ship', authMiddleware, async (req, res) => {
     const reqCheck = checkRequirements(settled.user, planet, definition.requirements);
     if (!reqCheck.met) return res.status(400).json({ error: reqCheck.error });
     
-    const totalCost = await calculateShipCost(shipId, count);
+    const totalCost = await calculateUnitCost(entityType, shipId, count);
     const isInvalid = !totalCost || [totalCost.metal, totalCost.crystal, totalCost.deuterium].some(v => v !== undefined && isNaN(v));
     if (isInvalid) {
       console.error(`[BuildingQueue.ship] Invalid cost calculated:`, totalCost);
@@ -268,7 +271,7 @@ router.post('/ship', authMiddleware, async (req, res) => {
     planet.resources.deuterium -= (totalCost.deuterium || 0);
     
     const config = await GameConfig.getConfig();
-    const duration = calculateQueueDuration('ship', shipId, 1, planet.buildings || {}, count, {
+    const duration = calculateQueueDuration(entityType, shipId, 1, planet.buildings || {}, count, {
       serverSpeed: config.serverSpeed,
       timeMultiplier: 1 // Ships don't have a specific multiplier in config yet
     });
@@ -276,7 +279,7 @@ router.post('/ship', authMiddleware, async (req, res) => {
     // Check for existing ship build
     const existing = await BuildingQueue.findOne({
       userId: req.user._id,
-      type: 'ship',
+      type: entityType,
       status: { $in: ['building', 'pending'] },
       applied: false
     }).sort({ endTime: -1, startTime: -1 });
@@ -289,11 +292,11 @@ router.post('/ship', authMiddleware, async (req, res) => {
     const queueItem = await BuildingQueue.create({
       userId: req.user._id,
       planetId,
-      type: 'ship',
+      type: entityType,
       itemId: shipId,
       name: definition.display?.name || shipId,
       count,
-      icon: definition.display?.icon || '🚀',
+      icon: definition.display?.icon || (entityType === 'defense' ? '🛡️' : '🚀'),
       duration,
       startTime,
       endTime,
@@ -305,7 +308,7 @@ router.post('/ship', authMiddleware, async (req, res) => {
     const refreshed = await settleUserState(settled.user, new Date());
     
     res.json({
-      message: 'Ship construction started',
+      message: `${entityType === 'defense' ? 'Defense' : 'Ship'} construction started`,
       queueItem: {
         id: queueItem._id,
         type: queueItem.type,

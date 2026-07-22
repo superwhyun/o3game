@@ -65,7 +65,7 @@ function formatFleetMovement(movement, now = new Date()) {
 async function activateNextQueues(userId, now = new Date()) {
   let mutated = false;
 
-  for (const type of ['building', 'research', 'ship']) {
+  for (const type of ['building', 'research', 'ship', 'defense']) {
     const active = await BuildingQueue.findOne({
       userId,
       type,
@@ -107,6 +107,9 @@ function applyQueueCompletion(user, queueItem) {
   } else if (queueItem.type === 'ship') {
     if (!planet.fleet) planet.fleet = {};
     planet.fleet[queueItem.itemId] = (planet.fleet[queueItem.itemId] || 0) + (queueItem.count || 1);
+  } else if (queueItem.type === 'defense') {
+    if (!planet.defense) planet.defense = {};
+    planet.defense[queueItem.itemId] = (planet.defense[queueItem.itemId] || 0) + (queueItem.count || 1);
   }
 
   return planet;
@@ -179,7 +182,7 @@ async function buildQueueState(userId, now = new Date()) {
     completed: []
   };
 
-  for (const type of ['building', 'research', 'ship']) {
+  for (const type of ['building', 'research', 'ship', 'defense']) {
     const typedItems = items.filter((item) => item.type === type);
     if (typedItems.length === 0) continue;
 

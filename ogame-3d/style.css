@@ -1480,7 +1480,51 @@ html, body {
     padding: 10px;
   }
   
-  .holo-sidebar {
+  .holo-sidebar.right {
+    display: none;
+  }
+
+  /* Keep navigation available as a swipeable command deck on smaller screens. */
+  .holo-sidebar.left {
+    position: fixed;
+    z-index: 1001;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    overflow-x: auto;
+    border: 1px solid rgba(0, 245, 255, 0.35);
+    border-radius: 12px;
+    background: rgba(10, 15, 30, 0.9);
+    scrollbar-width: none;
+  }
+
+  .holo-sidebar.left::-webkit-scrollbar {
+    display: none;
+  }
+
+  .holo-sidebar.left .sidebar-glow,
+  .holo-sidebar.left .section-title {
+    display: none;
+  }
+
+  .holo-sidebar.left .nav-section {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    margin: 0;
+  }
+
+  .holo-sidebar.left .holo-btn {
+    width: auto;
+    min-width: max-content;
+    margin: 0;
+    padding: 10px 12px;
+  }
+
+  .holo-sidebar.left .shortcut {
     display: none;
   }
   

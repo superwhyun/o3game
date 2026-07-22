@@ -490,6 +490,8 @@ export class UIManager {
   renderBuildingSwiper() {
     const container = document.getElementById('building-slides');
     if (!container) return;
+
+    const activeIndex = this.buildingSwiper?.activeIndex ?? 0;
     
     container.innerHTML = '';
     const buildings = Object.values(GameData.BUILDINGS).filter(b => b.category === this.currentCategory);
@@ -544,6 +546,7 @@ export class UIManager {
       pagination: { el: '.swiper-pagination', clickable: true },
       navigation: { prevEl: '.swiper-button-prev', nextEl: '.swiper-button-next' }
     });
+    this.buildingSwiper.slideTo(activeIndex, 0);
   }
   
   renderResearchSwiper() {

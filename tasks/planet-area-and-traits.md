@@ -1,7 +1,7 @@
 # 행성 면적·특성·테라포밍 계획
 
 작성일: 2026-10-05
-상태: in_progress — 구현·로컬 검증 완료, 최종 커밋·main 머지 대기. 배포·push는 요청되지 않음.
+상태: completed — 구현·로컬 검증·main 머지 완료. 배포·push는 요청되지 않음.
 진행 방식: harness. 이 문서를 단일 작업 기록으로 사용한다.
 
 ## 목표와 사용자 경로
@@ -136,7 +136,7 @@ availableArea = max(0, usableArea - usedArea - reservedArea)
 
 - 완료: 면적·생산·테라포밍·철거·행성 선택 구현과 로컬 통합 검증.
 - 미실행: 운영 DB 전환·배포·push (요청 범위 밖).
-- 다음 행동: 최종 커밋, main 머지, main 작업 폴더의 기존 미커밋 변경 보존 여부와 통합 빌드 확인.
+- 다음 행동: 필요 시 운영 전환은 docs/planet-development.md의 replica set·백업·dry-run 절차에 따라 별도 수행한다.
 - 새 근거로 범위·규칙이 바뀌면 이유와 영향받는 단위·재검증 범위를 여기에 기록한다.
 
 
@@ -160,3 +160,13 @@ availableArea = max(0, usableArea - usedArea - reservedArea)
 - U6: 임시 replica set과 standalone DB를 이용한 서버 전체77개 테스트 통과(실패0, skip0), 클라이언트 빌드 통과. 새 Chrome 사용자 경로1개 통과, 브라우저 JS 오류0. 마이그레이션 dry-run→apply→재실행은 격리된 실제 DB에서 검증했다. 운영 DB는 변경하지 않았다.
 - 브라우저 연결: Orca 내장 브라우저는 runtime_unavailable로 연결 종료되어 실제 Chrome/Playwright로 검증했다. 검증 이미지: artifacts/planet-ui/desktop.png, mobile.png (Git 제외).
 - 빌드의 기존 대형 번들 경고는 남아 있다. 배포·운영 UI 검증은 수행하지 않았다.
+
+
+## 최종 Git 및 main 통합 결과
+
+- 기능 커밋: 5e8de7f (`feat: add planet land limits, production traits and terraforming`). main 머지 커밋: 60f478f.
+- main의 기존 미커밋 3D 작업을 autostash로 보존하고 EntityBrowser 충돌을 양쪽 기능이 유지되도록 해결했다. 해당 작업은 후속 main 커밋 c8b6d96에 반영되었다. 다른 작업의 후속 수정은 대신 커밋하거나 삭제하지 않는다.
+- main 통합 중 새 테라포밍의 3D 카탈로그 매핑 누락을 발견했다. 동시에 진행 중인 3D 작업의 테라포밍 모형·매핑을 유지하고 중복 정의를 정리했다. 별도 전시 모형 대안을 남기지 않았다.
+- main 작업 폴더의 최신 통합 상태: 격리된 실제 replica set·standalone DB에서 서버80개 테스트 전부 통과(실패0, skip0). Chrome 실제 사용자 경로1개 통과, JS 오류0, Vite 빌드 통과. 코드가 아닌 완료 기록만 추가 반영한다.
+- 최초 커밋 훅은 테스트용 고정 자격증명을 차단했다. 새 테스트/프리뷰의 자격증명을 매 실행 무작위 생성하도록 수정하고 테스트와 훅을 통과했다. 훅을 우회하지 않았다.
+- 운영 데이터 변경·배포·원격 push는 수행하지 않았다. 테스트용 서버·임시 DB·fixture 파일은 작업 종료 시 정리한다.

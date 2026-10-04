@@ -1,3 +1,4 @@
+const { calculateArea, productionModifiers, normalizeLegacyArea } = require('../utils/planetArea');
 const { atomic } = require('./transactions');
 const BuildingQueue = require('../models/BuildingQueue');
 const FleetMovement = require('../models/FleetMovement');
@@ -13,11 +14,11 @@ const {
 const ACTIVE_QUEUE_STATUSES = ['building', 'pending'];
 
 function getPlanetForQueue(user, queueItem) {
-  return user.planets[queueItem.planetId] || user.planets[0];
+  return user.planets[queueItem.planetId];
 }
 
 function getResearchState(user, planet) {
-  return planet?.research || user.research || {};
+  return { ...(planet?.research?.toObject ? planet.research.toObject() : planet?.research || {}), terraforming: user.terraformingLevel || 0 };
 }
 
 function formatQueueItem(item, now = new Date()) {
@@ -28,6 +29,8 @@ function formatQueueItem(item, now = new Date()) {
   return {
     id: item._id,
     type: item.type,
+    planetId: item.planetId,
+    action: item.action || 'upgrade',
     itemId: item.itemId,
     name: item.name,
     level: item.level,
@@ -70,34 +73,18 @@ function formatFleetMovement(movement, now = new Date()) {
 }
 
 async function activateNextQueues(userId, now = new Date()) {
-  let mutated = false;
-
-  for (const type of ['building', 'research', 'ship', 'defense']) {
-    const active = await BuildingQueue.findOne({
-      userId,
-      type,
-      status: 'building',
-      applied: false,
-      endTime: { $gt: now }
-    }).sort({ startTime: 1, endTime: 1 });
-
-    if (active) continue;
-
-    const next = await BuildingQueue.findOne({
-      userId,
-      type,
-      status: 'pending',
-      applied: false,
-      endTime: { $gt: now }
-    }).sort({ startTime: 1, endTime: 1 });
-
-    if (!next) continue;
-
-    next.status = 'building';
-    await next.save();
-    mutated = true;
+  const items = await BuildingQueue.find({ userId, applied: false, status: { $in: ACTIVE_QUEUE_STATUSES }, endTime: { $gt: now } }).sort({ startTime: 1, endTime: 1 });
+  const groups = new Map();
+  for (const item of items) {
+    const key = item.type === 'research' ? 'research' : `${item.type}:${item.planetId}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
   }
-
+  let mutated = false;
+  for (const group of groups.values()) {
+    if (group.some(item => item.status === 'building')) continue;
+    group[0].status = 'building'; await group[0].save(); mutated = true;
+  }
   return mutated;
 }
 
@@ -107,8 +94,12 @@ function applyQueueCompletion(user, queueItem) {
 
   if (queueItem.type === 'building') {
     if (!planet.buildings) planet.buildings = {};
-    planet.buildings[queueItem.itemId] = queueItem.level || ((planet.buildings[queueItem.itemId] || 0) + 1);
+    planet.buildings[queueItem.itemId] = queueItem.action === 'demolish' ? queueItem.level : (queueItem.level ?? ((planet.buildings[queueItem.itemId] || 0) + 1));
   } else if (queueItem.type === 'research') {
+    if (queueItem.itemId === 'terraforming') {
+      user.terraformingLevel = queueItem.level;
+      return planet;
+    }
     if (!planet.research) planet.research = {};
     planet.research[queueItem.itemId] = queueItem.level || ((planet.research[queueItem.itemId] || 0) + 1);
   } else if (queueItem.type === 'ship') {
@@ -156,9 +147,15 @@ async function settleQueuesForUser(user, config, now = new Date()) {
     if (!claimedItem) continue;
 
     const planet = getPlanetForQueue(user, claimedItem);
-    if (!planet) continue;
+    if (!planet) throw new Error('Queue references a missing planet');
 
     applyOfflineProduction(planet, config, new Date(claimedItem.endTime));
+    // A global research completion is an economy boundary for every planet.
+    if (claimedItem.itemId === 'terraforming') {
+      for (const other of user.planets) {
+        if (other !== planet) applyOfflineProduction(other, config, new Date(claimedItem.endTime));
+      }
+    }
     applyQueueCompletion(user, claimedItem);
 
     completed.push({
@@ -174,7 +171,7 @@ async function settleQueuesForUser(user, config, now = new Date()) {
   return completed;
 }
 
-async function buildQueueState(userId, now = new Date()) {
+async function buildQueueState(userId, now = new Date(), planetId = null) {
   const items = await BuildingQueue.find({
     userId,
     status: { $in: ACTIVE_QUEUE_STATUSES },
@@ -186,11 +183,12 @@ async function buildQueueState(userId, now = new Date()) {
     research: null,
     ship: null,
     queue: [],
-    completed: []
+    completed: [],
+    all: items.map(item => formatQueueItem(item, now))
   };
 
   for (const type of ['building', 'research', 'ship', 'defense']) {
-    const typedItems = items.filter((item) => item.type === type);
+    const typedItems = items.filter((item) => item.type === type && (planetId === null || String(item.planetId) === String(planetId) || item.itemId === 'terraforming'));
     if (typedItems.length === 0) continue;
 
     queueState[type] = formatQueueItem(typedItems[0], now);
@@ -209,14 +207,16 @@ async function buildFleetState(userId, now = new Date()) {
   return movements.map((movement) => formatFleetMovement(movement, now));
 }
 
-function buildPlanetSnapshot(planet, config) {
-  const storage = calculateStorage(planet);
+function buildPlanetSnapshot(planet, config, terraformLevel, queues, planetId) {
+  const storage = calculateStorage(planet, config);
   const production = calculateProduction(planet, config.serverSpeed || 1, config.resourceSettings || {});
   const snapshot = planet.toObject ? planet.toObject() : { ...planet };
 
   return {
     ...snapshot,
     storage,
+    area: calculateArea(planet, terraformLevel, queues, planetId),
+    productionModifiers: productionModifiers(planet),
     production
   };
 }
@@ -225,6 +225,7 @@ function buildGameSnapshot(user, { config, now, queueState, fleetMovements, comp
   const currentPlanetIndex = user.currentPlanet || 0;
   const currentPlanet = user.planets[currentPlanetIndex] || user.planets[0];
   const research = getResearchState(user, currentPlanet);
+  const queues = queueState?.all || [queueState?.building, queueState?.research, queueState?.ship, queueState?.defense, ...(queueState?.queue || [])].filter(Boolean);
 
   return {
     id: user._id,
@@ -235,13 +236,14 @@ function buildGameSnapshot(user, { config, now, queueState, fleetMovements, comp
     stateRevision: user.stateRevision || 0,
     fleetFormations: (user.fleetFormations || []).map(f => ({ ...f.toObject(), id: f._id })),
     unassignedShips: require('../utils/formationRules').availableShips(user, currentPlanet._id),
-    planets: user.planets.map((planet) => buildPlanetSnapshot(planet, config)),
+    planets: user.planets.map((planet, index) => buildPlanetSnapshot(planet, config, user.terraformingLevel || 0, queues, String(index))),
     research,
     queueState,
     fleetMovements,
     completedQueues,
     serverSpeed: config.serverSpeed || 1,
     serverTime: now,
+    defaultStorage: config.resourceSettings?.defaultStorage || { metal: 10000, crystal: 10000, deuterium: 10000 },
     entityConfigRevision: entityConfigService.getRevision()
   };
 }
@@ -253,6 +255,8 @@ async function settleUserStateInternal(userOrId, now = new Date()) {
     if (!user) return null;
 
     const config = await GameConfig.getConfig();
+    const activeQueues = await BuildingQueue.find({ userId: user._id, status: { $in: ACTIVE_QUEUE_STATUSES }, applied: false }).lean();
+    user.planets.forEach((planet, index) => normalizeLegacyArea(planet, activeQueues, String(index)));
     const completedQueues = await settleQueuesForUser(user, config, now);
 
     for (const planet of user.planets) {
@@ -262,7 +266,7 @@ async function settleUserStateInternal(userOrId, now = new Date()) {
     user.markModified('planets');
     await user.save();
 
-    const queueState = await buildQueueState(user._id, now);
+    const queueState = await buildQueueState(user._id, now, user.currentPlanet);
     const fleetMovements = await buildFleetState(user._id, now);
 
     return {

@@ -27,7 +27,10 @@ const planetSchema = new mongoose.Schema({
   coordinateKey: { type: String },
   minTemp: { type: Number, default: -20 },
   maxTemp: { type: Number, default: 40 },
-  diameter: { type: Number, default: 12800 },
+  diameter: { type: Number, default: 12800, min: 0 },
+  baseUsablePercent: { type: Number, min: 0, max: 100 },
+  areaVersion: { type: Number },
+  traits: { metal: { type: Number, min: 0.8, max: 1.2 }, crystal: { type: Number, min: 0.8, max: 1.2 } },
   
   resources: {
     metal: { type: Number, default: 500 },
@@ -67,6 +70,7 @@ const userSchema = new mongoose.Schema({
   nextFleetNumber: { type: Number, default: 1 },
   stateRevision: { type: Number, default: 0 },
   currentPlanet: { type: Number, default: 0 },
+  terraformingLevel: { type: Number, default: 0, min: 0, max: 30 },
   
   // Game Stats
   rank: { type: Number, default: 0 },
@@ -126,6 +130,8 @@ userSchema.pre('save', async function() {
     
     this.planets.push({
       name: 'Colony-1',
+      ...require('../utils/planetArea').createPlanetEnvironment(),
+      areaVersion: 1,
       ...home,
       resources: {
         metal: startResources.startingMetal,

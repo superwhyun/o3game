@@ -133,11 +133,18 @@ class ApiService {
     });
   }
   
+  async demolishBuilding(buildingId, planetId) {
+    return this.request('/api/queue/demolish', { method: 'POST', body: JSON.stringify({ buildingId, planetId }) });
+  }
+  async selectPlanet(planetId) {
+    return this.request('/api/queue/planet', { method: 'POST', body: JSON.stringify({ planetId }) });
+  }
+
   // Start research
-  async startResearch(researchId) {
+  async startResearch(researchId, planetId = '0') {
     return this.request('/api/queue/research', {
       method: 'POST',
-      body: JSON.stringify({ researchId })
+      body: JSON.stringify({ researchId, planetId })
     });
   }
   

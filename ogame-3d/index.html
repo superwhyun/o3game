@@ -133,6 +133,8 @@
       </div>
 
       <div class="header-right">
+          <label class="sr-only" for="planet-select">소유 행성 선택</label>
+          <select id="planet-select" aria-label="소유 행성 선택"></select>
         <div class="time-display">
           <span class="label" id="system-date">宇宙暦</span>
           <span class="value" id="system-time">00:00:00</span>
@@ -245,6 +247,7 @@
           </div>
         </header>
         <div class="panel-body">
+          <section id="building-area" class="planet-area" aria-label="행성 개발 현황"></section>
           <div id="buildings-browser"></div>
           <div class="panel-queue-section" id="buildings-queue-section">
             <div class="panel-queue-title">건설 대기열</div>
@@ -262,6 +265,7 @@
           </div>
         </header>
         <div class="panel-body">
+          <section id="research-area" class="planet-area" aria-label="테라포밍 현황"></section>
           <div id="research-browser"></div>
           <div class="panel-queue-section" id="research-queue-section">
             <div class="panel-queue-title">연구 대기열</div>

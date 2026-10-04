@@ -84,7 +84,7 @@ async function startServer() {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cosmic_empire');
     const transactionsEnabled = await require('./services/transactions').supportsTransactions();
     console.log('✅ MongoDB connected');
-    if (!transactionsEnabled) console.warn('Saved fleet mutations need a replica set; existing gameplay remains available.');
+    if (!transactionsEnabled) console.warn('Construction and fleet mutations need a replica set; login and state reads remain available.');
     await entityConfigService.initialize();
     console.log(`🧠 Entity catalog loaded (revision ${entityConfigService.getRevision()})`);
 

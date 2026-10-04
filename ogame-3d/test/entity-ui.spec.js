@@ -63,7 +63,7 @@ async function completeQueue(type) {
     { $set: { endTime: new Date(Date.now() - 1000) } },
   );
 }
-test('completed construction changes tier, preview preserves commands, research completes and all 63 exhibits render', async ({
+test('completed construction changes tier, preview preserves commands, research completes and all 64 exhibits render', async ({
   page,
 }) => {
   const errors = [];
@@ -139,14 +139,56 @@ test('completed construction changes tier, preview preserves commands, research 
   });
   await page.screenshot({ path: dir + 'research-desktop.png' });
   await page.goto('/entity-lab.html');
-  await expect(page.locator('.lab-card img[src]')).toHaveCount(63);
+  await expect(page.locator('.lab-card img[src]')).toHaveCount(64);
   const urls = await page
     .locator('.lab-card img')
     .evaluateAll((imgs) => imgs.map((i) => i.src));
-  expect(new Set(urls).size).toBe(63);
+  expect(new Set(urls).size).toBe(64);
   await page.screenshot({ path: dir + 'contact-sheet.png', fullPage: true });
   expect(errors).toEqual([]);
 });
+test('planet selection and demolition refresh the completed facility tier', async ({
+  page,
+}) => {
+  const User = require('../../server/models/User');
+  const user = await User.findById(fixture.user.id);
+  user.planets.push({
+    name: '외형 검사 식민지',
+    galaxy: 1,
+    system: 1,
+    planet: 12,
+    buildings: { metalMine: 20, researchLab: 3 },
+    resources: { metal: 10000, crystal: 10000, deuterium: 10000 },
+  });
+  await user.save();
+  await login(page);
+  await page.locator('#planet-select').selectOption('1');
+  const media = page.locator('#buildings-browser .detail-media');
+  await expect(page.locator('#buildings-browser .detail-amount')).toContainText(
+    'Lv 20',
+  );
+  await expect(media).toHaveAttribute('data-tier', '2');
+  page.once('dialog', (d) => d.accept());
+  await page.locator('#buildings-browser [data-command="demolish"]').click();
+  await expect(page.locator('#buildings-panel-queue')).toContainText('철거');
+  await completeQueue('building');
+  await page.evaluate(() => window.uiManager.syncUserDataFromServer());
+  await expect(media).toHaveAttribute('data-tier', '1');
+  await expect(page.locator('#buildings-browser .detail-amount')).toContainText(
+    'Lv 19',
+  );
+  await page.locator('#planet-select').selectOption('0');
+  await expect(page.locator('#buildings-browser .detail-amount')).toContainText(
+    'Lv 10',
+  );
+  await expect(media).toHaveAttribute('data-tier', '1');
+  await page.locator('.holo-btn[data-view="research"]').click();
+  await page.locator('#research-browser [data-entity="terraforming"]').click();
+  await expect(
+    page.locator('#research-browser .research-exhibit-note'),
+  ).toContainText('환경 조절 타워');
+});
+
 test('mobile scrolling, keyboard controls, reduced motion and WebGL fallback preserve actions', async ({
   page,
 }) => {
@@ -154,6 +196,15 @@ test('mobile scrolling, keyboard controls, reduced motion and WebGL fallback pre
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await login(page);
   const root = page.locator('#buildings-browser');
+  await expect(
+    page.locator('#building-area .area-details'),
+  ).not.toHaveAttribute('open', '');
+  await page.locator('#building-area summary').click();
+  await expect(page.locator('#building-area .area-details')).toHaveAttribute(
+    'open',
+    '',
+  );
+  await page.locator('#building-area summary').click();
   const media = root.locator('.detail-media');
   await expect(root.locator('[data-model-action="rotate"]')).toHaveAttribute(
     'aria-pressed',

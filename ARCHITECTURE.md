@@ -99,7 +99,7 @@ OOgame/
 - 새 선체 형태가 필요하면 `hulls.js`에 빌더 함수 하나를 추가하고 `HULLS`에 등록합니다.
 - 개발 서버에서 `/ship-lab.html`을 열면 사양 JSON을 편집하며 실시간으로 모델을 확인할 수 있습니다.
 
-- 건물 12종과 연구 15종도 카탈로그 model을 사용한다. `src/three/entities/EntityModels.js`에서 시설 디오라마/실험 장치를 생성하며 건물은 완료 레벨 1~9/10~19/20~29/30+에 따라 구조가 발전한다. 공통 ModelViewer/ModelThumbnails가 조병창과 renderer를 공유한다.
+- 건물 12종과 연구 16종도 카탈로그 model을 사용한다. `src/three/entities/EntityModels.js`에서 시설 디오라마/실험 장치를 생성하며 건물은 완료 레벨 1~9/10~19/20~29/30+에 따라 구조가 발전한다. 공통 ModelViewer/ModelThumbnails가 조병창과 renderer를 공유한다.
 - `EntityBrowser`는 실제 상태와 다음 외형 미리보기를 구별하고 모바일에서도 명령 버튼을 상세 하단에 유지한다. 실패 시 정지 모형/설명으로 복구한다. 확장·검증은 `docs/entity-models.md`, 개발용 전시는 `/entity-lab.html`을 참고한다.
 
 ### 4.3 UI 구조

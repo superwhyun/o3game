@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { CATALOG_SPECS } = require('../data/catalog');
-test('all 63 facility/experiment variants have valid bounds, distinct structural tiers and bounded complexity', async () => {
+test('all 64 facility/experiment variants have valid bounds, distinct structural tiers and bounded complexity', async () => {
   const { createEntityModel, disposeEntityModel, BUILDERS, EXPERIMENTS } =
     await import('../../ogame-3d/src/three/entities/EntityModels.js');
   for (const type of ['building', 'research'])

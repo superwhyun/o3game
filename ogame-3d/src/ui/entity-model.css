@@ -148,3 +148,53 @@
   margin: 0;
   flex-shrink: 0;
 }
+
+.area-details > summary {
+  cursor: pointer;
+  color: var(--text);
+  min-height: 44px;
+  display: list-item;
+  align-content: center;
+}
+.area-details > summary:focus-visible {
+  outline: 2px solid var(--gold);
+}
+@media (max-width: 700px) {
+  #building-area,
+  #research-area {
+    padding: 4px 12px;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+  }
+  .area-details > .area-expanded {
+    max-height: 140px;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+  .entity-detail {
+    scroll-padding-bottom: 130px;
+  }
+}
+
+@media (max-width: 700px) {
+  .model-stage {
+    height: 180px;
+  }
+  .entity-detail > .detail-command {
+    gap: 10px;
+    padding: 10px 14px;
+  }
+  .detail-command .cmd-btn {
+    min-width: 120px;
+    min-height: 44px;
+    padding-inline: 8px;
+  }
+  .detail-command [data-command='demolish'] {
+    width: 84px;
+    min-width: 84px;
+    font-size: 11px;
+    letter-spacing: 0;
+    white-space: normal;
+    line-height: 1.25;
+  }
+}

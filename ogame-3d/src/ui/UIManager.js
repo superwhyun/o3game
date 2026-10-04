@@ -998,7 +998,16 @@ export class UIManager {
       ${area.overCapacity ? '<p class="area-warning">면적 한도 초과: 기존 시설은 유지됩니다. 철거로 공간을 확보해 주세요.</p>' : ''}
       <p>금속 ${bonus(modifiers?.metal ?? 1)} · 크리스털 ${bonus(modifiers?.crystal ?? 1)} · 중수소 ${bonus(modifiers?.deuterium ?? 1)} · 태양광 ${bonus(modifiers?.solar ?? 1)}</p>
       <p class="detail-muted">건설·업그레이드마다 1칸 사용. ${level < 30 ? `테라포밍 다음 단계: ${nextPercent}% / ${nextUsable}칸 (+${nextUsable - area.usable}칸)` : '테라포밍 최대 레벨'}</p>`;
-    for (const id of ['building-area', 'research-area']) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
+    for (const id of ['building-area', 'research-area']) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const previous = el.querySelector('.area-details');
+      const open = previous ? previous.open : !window.matchMedia('(max-width: 700px)').matches;
+      el.innerHTML = `<details class="area-details" ${open ? 'open' : ''}>
+        <summary>행성 개발 현황 · 남은 ${area.available}칸 · 가용률 ${area.usablePercent}%</summary>
+        <div class="area-expanded">${html}</div>
+      </details>`;
+    }
   }
 
   updatePlanetInfo() {

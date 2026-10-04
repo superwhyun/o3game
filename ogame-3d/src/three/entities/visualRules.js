@@ -25,7 +25,10 @@ export function visualKey(entity, spec) {
   return `${entity.type}:${entity.id}:${JSON.stringify(spec)}`;
 }
 export const RESEARCH_EXHIBITS = {
-  terraforming: ['행성 표면의 개발 가능 환경을 조성하는 실험 모형입니다.', '행성 지형 · 환경 조절 타워 · 생태 돔'],
+  terraforming: [
+    '행성 표면의 개발 가능 환경을 조성하는 실험 모형입니다.',
+    '행성 지형 · 환경 조절 타워 · 생태 돔',
+  ],
   energyTechnology: [
     '에너지의 생성과 분배를 연구합니다.',
     '발전 코어 · 전력 링 · 측정 단자',

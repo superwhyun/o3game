@@ -69,94 +69,26 @@ class SocketHandlers {
     }
   }
   
-  async build(socket, { buildingId }) {
+  async queueCommand(socket, command) {
     if (!socket.userId) return;
-    
     try {
-      const user = await User.findById(socket.userId);
-      const planet = user.planets[user.currentPlanet];
-      const currentLevel = planet.buildings[buildingId] || 0;
-      const cost = await calculateBuildingCost(buildingId, currentLevel + 1);
-      
-      if (!this.hasResources(planet.resources, cost)) {
-        socket.emit('error', { message: 'Insufficient resources' });
-        return;
-      }
-      
-      this.deductResources(planet.resources, cost);
-      planet.buildings[buildingId] = currentLevel + 1;
-      planet.lastUpdate = new Date();
-      await user.save();
-      
-      socket.emit('buildingComplete', { buildingId, level: currentLevel + 1 });
-      this.getPlanetData(socket);
-      
+      const result = await require('../services/ConstructionService').enqueue(socket.userId, command);
+      socket.emit('constructionQueued', result);
+      socket.emit('planetData', result.snapshot);
     } catch (error) {
-      socket.emit('error', { message: error.message });
+      socket.emit('error', { message: error.message, code: error.code });
     }
   }
-  
-  async research(socket, { researchId }) {
-    if (!socket.userId) return;
-    
-    try {
-      const user = await User.findById(socket.userId);
-      const planet = user.planets[user.currentPlanet];
-      const currentLevel = planet.research[researchId] || 0;
-      const cost = await calculateResearchCost(researchId, currentLevel);
-      
-      if (!this.hasResources(planet.resources, cost)) {
-        socket.emit('error', { message: 'Insufficient resources' });
-        return;
-      }
-      
-      this.deductResources(planet.resources, cost);
-      planet.research[researchId] = currentLevel + 1;
-      planet.lastUpdate = new Date();
-      await user.save();
-      
-      socket.emit('researchComplete', { researchId, level: currentLevel + 1 });
-      
-    } catch (error) {
-      socket.emit('error', { message: error.message });
-    }
+  async build(socket, { buildingId, planetId } = {}) {
+    return this.queueCommand(socket, { type: 'building', itemId: buildingId, planetId });
   }
-  
-  async buildShip(socket, { shipId, count = 1 }) {
-    if (!socket.userId) return;
-    
-    try {
-      const user = await User.findById(socket.userId);
-      const planet = user.planets[user.currentPlanet];
-      
-      if (planet.buildings.shipyard < 1) {
-        socket.emit('error', { message: 'Shipyard required' });
-        return;
-      }
-      
-      const totalCost = await calculateShipCost(shipId, count);
-      if (!totalCost) {
-        socket.emit('error', { message: 'Invalid ship type' });
-        return;
-      }
+  async research(socket, { researchId, planetId } = {}) {
+    return this.queueCommand(socket, { type: 'research', itemId: researchId, planetId });
+  }
+  async buildShip(socket, { shipId, count = 1, planetId } = {}) {
+    return this.queueCommand(socket, { type: 'ship', itemId: shipId, count, planetId });
+  }
 
-      if (!this.hasResources(planet.resources, totalCost)) {
-        socket.emit('error', { message: 'Insufficient resources' });
-        return;
-      }
-
-      this.deductResources(planet.resources, totalCost);
-      planet.fleet[shipId] = (planet.fleet[shipId] || 0) + count;
-      planet.lastUpdate = new Date();
-      await user.save();
-      
-      socket.emit('shipBuilt', { shipId, count, total: planet.fleet[shipId] });
-      
-    } catch (error) {
-      socket.emit('error', { message: error.message });
-    }
-  }
-  
   async sendFleet(socket, { fleet, fleetDeck, target, mission, cargo = {}, speed = 100 }) {
     if (!socket.userId) return;
     

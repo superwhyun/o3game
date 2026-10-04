@@ -10,21 +10,22 @@ function row(label, value, note = '') {
   return `<div class="spec-row"><dt>${escapeHtml(label)}</dt><dd>${value}${note ? `<small>${note}</small>` : ''}</dd></div>`;
 }
 
-function effectRows(entity, level) {
+function effectRows(entity, level, modifiers = {}) {
   const rows = [];
   const effects = entity.effects || {};
-  const delta = (rule) => {
-    const now = evaluateEffect(rule, level);
-    const next = evaluateEffect(rule, level + 1);
+  if (effects.usablePercentPerLevel) rows.push(row('모든 행성 가용률', `단계당 +${effects.usablePercentPerLevel}%p`, `최대 ${effects.maxLevel}레벨 · 가용률 상한 100%`));
+  const delta = (rule, multiplier = 1) => {
+    const now = evaluateEffect(rule, level) * multiplier;
+    const next = evaluateEffect(rule, level + 1) * multiplier;
     return { now: formatAmount(now), diff: formatAmount(next - now) };
   };
 
   for (const [resource, rule] of Object.entries(effects.production || {})) {
-    const { now, diff } = delta(rule);
+    const { now, diff } = delta(rule, modifiers[resource] ?? 1);
     rows.push(row(`${RESOURCE_LABELS[resource] || resource} 생산`, `${now}/h`, `다음 단계 +${diff}`));
   }
   if (effects.energyProduction?.amount) {
-    const { now, diff } = delta(effects.energyProduction.amount);
+    const { now, diff } = delta(effects.energyProduction.amount, entity.id === 'solarPlant' ? modifiers.solar ?? 1 : 1);
     rows.push(row('에너지 생산', now, `다음 단계 +${diff}`));
   }
   if (effects.energyConsumption?.amount) {
@@ -62,8 +63,8 @@ function statRows(entity, count) {
 }
 
 /** @returns {string} */
-export function renderSpecs(entity, { level = 0, count = 1 } = {}) {
-  const rows = catalog.isLeveled(entity.type) ? effectRows(entity, level) : statRows(entity, count);
+export function renderSpecs(entity, { level = 0, count = 1, modifiers = {} } = {}) {
+  const rows = catalog.isLeveled(entity.type) ? effectRows(entity, level, modifiers) : statRows(entity, count);
   return rows.length ? `<dl class="spec-list">${rows.join('')}</dl>` : '';
 }
 

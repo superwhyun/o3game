@@ -52,3 +52,6 @@ artifacts/fleet-ui/test-results/
 
 # Private database backups
 artifacts/db-backups/
+
+# Planet browser verification output
+artifacts/planet-ui/

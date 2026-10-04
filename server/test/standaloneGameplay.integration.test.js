@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const { randomUUID } = require('node:crypto');
 const uri = process.env.STANDALONE_TEST_MONGODB_URI;
 
-test('standalone DB preserves login, state, building queue and existing fleet return', {skip: !uri}, async () => {
+test('standalone DB preserves login and state, rejects unsafe mutations, preserves existing fleet return', {skip: !uri}, async () => {
   if (!/\/[^/?]*_test[^/?]*(\?|$)/.test(uri)) throw new Error('Use a dedicated _test database');
   process.env.JWT_SECRET = 'standalone-regression-only-secret-2026';
   await mongoose.connect(uri);
@@ -32,8 +32,8 @@ test('standalone DB preserves login, state, building queue and existing fleet re
     const me = await fetch(base+'/api/auth/me',{headers});
     assert.equal(me.status,200); assert.equal((await me.json()).username,user.username);
     const built = await fetch(base+'/api/queue/build',{method:'POST',headers,body:JSON.stringify({buildingId:'metalMine'})});
-    assert.equal(built.status,200,JSON.stringify(await built.json()));
-    assert.equal(await Queue.countDocuments({userId:user._id}),1);
+    assert.equal(built.status,503,JSON.stringify(await built.json()));
+    assert.equal(await Queue.countDocuments({userId:user._id}),0);
     const formation = await fetch(base+'/api/game/fleet-formations',{method:'POST',headers,body:JSON.stringify({originPlanetId:String(user.planets[0]._id)})});
     assert.equal(formation.status,503);
     assert.equal((await User.findById(user._id)).fleetFormations.length,0);

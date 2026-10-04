@@ -21,6 +21,7 @@ const BuildingQueueSchema = new mongoose.Schema({
     enum: ['building', 'research', 'ship', 'defense'],
     required: true
   },
+  action: { type: String, enum: ['upgrade', 'demolish'], default: 'upgrade' },
   itemId: {
     type: String,
     required: true // e.g., 'metalMine', 'lightFighter', etc.
@@ -127,51 +128,14 @@ BuildingQueueSchema.statics.getUserQueue = async function(userId) {
   };
 };
 
-// Static method to complete a build
+// Delegate legacy callers to the single settlement path (no alternate upgrades).
 BuildingQueueSchema.statics.completeBuild = async function(queueId) {
+  const item = await this.findById(queueId);
+  if (!item || item.applied || item.status === 'cancelled' || !item.isCompleted()) return null;
+  const settled = await require('../services/GameStateService').settleUserState(item.userId);
   const queueItem = await this.findById(queueId);
-  
-  if (!queueItem || queueItem.status !== 'building' || queueItem.applied) {
-    return null;
-  }
-  
-  const User = mongoose.model('User');
-  const user = await User.findById(queueItem.userId);
-  
-  if (!user) {
-    return null;
-  }
-  
-  // Apply the build based on type
-  const planet = user.planets[queueItem.planetId] || user.planets[0];
-  
-  if (queueItem.type === 'building') {
-    // Upgrade building
-    if (!planet.buildings) planet.buildings = {};
-    const currentLevel = planet.buildings[queueItem.itemId] || 0;
-    planet.buildings[queueItem.itemId] = currentLevel + 1;
-  } else if (queueItem.type === 'research') {
-    // Upgrade research
-    if (!user.research) user.research = {};
-    const currentLevel = user.research[queueItem.itemId] || 0;
-    user.research[queueItem.itemId] = currentLevel + 1;
-  } else if (queueItem.type === 'ship') {
-    // Add ships
-    if (!planet.fleet) planet.fleet = {};
-    planet.fleet[queueItem.itemId] = (planet.fleet[queueItem.itemId] || 0) + queueItem.count;
-  }
-  
-  // Mark as completed
-  queueItem.status = 'completed';
-  queueItem.applied = true;
-  await queueItem.save();
-  await user.save();
-  
-  return {
-    queueItem,
-    user,
-    planet
-  };
+  if (!queueItem?.applied) return null;
+  return { queueItem, user: settled.user, planet: settled.user.planets[queueItem.planetId] };
 };
 
 // Instance method to check if completed

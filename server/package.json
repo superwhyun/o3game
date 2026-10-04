@@ -6,7 +6,8 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "node --test test/*.test.js",
-    "migrate:planets": "node scripts/migratePlanetCoordinates.js"
+    "migrate:planets": "node scripts/migratePlanetCoordinates.js",
+    "migrate:areas": "node scripts/migratePlanetAreas.js"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +27,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^11.3.0",
     "nodemon": "^3.1.14"
   }
 }

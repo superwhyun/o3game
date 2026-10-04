@@ -11,7 +11,7 @@ import { CATEGORY_LABELS, escapeHtml, formatDuration, TYPE_LABELS } from '../dom
 import { renderCosts, renderRequirements, renderSpecs, renderUnlocks } from './entityDetails.js';
 
 const MAX_UNITS = 9999;
-const STATUS_TEXT = { ready: '가능', short: '자원 부족', locked: '조건 미충족', busy: '진행 중' };
+const STATUS_TEXT = { ready: '가능', short: '자원 부족', locked: '조건 미충족', busy: '진행 중', area: '면적 부족', max: '최대 레벨' };
 
 /**
  * @typedef {Object} BrowserTab
@@ -31,12 +31,13 @@ export class EntityBrowser {
    * @param {(entity: object, count: number) => Promise<void>} options.onCommand
    * @param {boolean} [options.showModel]  show the 3D ship inspector
    */
-  constructor({ root, tabs, getState, isInProgress, onCommand, showModel = false }) {
+  constructor({ root, tabs, getState, isInProgress, onCommand, onDemolish, showModel = false }) {
     this.root = root;
     this.getTabs = tabs;
     this.getState = getState;
     this.isInProgress = isInProgress;
     this.onCommand = onCommand;
+    this.onDemolish = onDemolish;
     this.showModel = showModel;
     this.activeTab = null;
     this.selected = new Map(); // tab key -> entity id
@@ -88,7 +89,8 @@ export class EntityBrowser {
       this.pending = true;
       button.disabled = true;
       try {
-        await this.onCommand(this.currentEntity(), this.unitCount);
+        if (button.dataset.command === 'demolish') await this.onDemolish?.(this.currentEntity());
+        else await this.onCommand(this.currentEntity(), this.unitCount);
       } finally {
         this.pending = false;
         this.render();
@@ -141,7 +143,9 @@ export class EntityBrowser {
     const locked = requirements.some((req) => !req.met);
     const affordable = Object.entries(cost).every(([resource, value]) => (state.resources?.[resource] || 0) >= value);
     const busy = leveled && this.isInProgress(entity);
-    const status = locked ? 'locked' : busy ? 'busy' : affordable ? 'ready' : 'short';
+    const noArea = entity.type === 'building' && (state.planet?.area?.available ?? Infinity) < 1;
+    const maxed = entity.id === 'terraforming' && (amount >= 30 || (state.planets?.length > 0 && state.planets.every(p => p.area?.usablePercent >= 100)));
+    const status = maxed ? 'max' : locked ? 'locked' : busy ? 'busy' : noArea ? 'area' : affordable ? 'ready' : 'short';
     const duration = catalog.duration(entity, {
       level: amount + 1,
       count,
@@ -226,7 +230,8 @@ export class EntityBrowser {
           : `보유 ${info.amount.toLocaleString('ko-KR')}`}</p>
       </header>
       ${entity.description ? `<p class="detail-desc">${escapeHtml(entity.description)}</p>` : ''}
-      ${renderSpecs(entity, { level: info.amount, count })}
+      ${renderSpecs(entity, { level: info.amount, count, modifiers: state.planet?.productionModifiers })}
+      ${entity.type === 'building' ? `<p class="detail-muted">사용 ${info.amount}칸 → ${info.amount + 1}칸 · 추가 1칸 · 남은 ${state.planet?.area?.available ?? '—'}칸</p>` : ''}
       <section class="detail-section"><h4>선행 조건</h4>${renderRequirements(info.requirements)}</section>
       <section class="detail-section"><h4>소요 자원</h4>${renderCosts(info.cost, state.resources || {})}</section>
       ${renderUnlocks(entity)}
@@ -237,6 +242,7 @@ export class EntityBrowser {
         <button type="button" class="cmd-btn primary" data-command="${entity.type}" ${commandDisabled ? 'disabled' : ''}>
           ${info.status === 'ready' ? labels.action : STATUS_TEXT[info.status]}
         </button>
+        ${entity.type === 'building' && info.amount > 0 && this.onDemolish ? `<button type="button" class="cmd-btn" data-command="demolish" ${this.pending || this.isInProgress(entity) ? 'disabled' : ''}>1레벨 철거 · 1칸 회수</button>` : ''}
       </footer>`;
 
     if (keepFocus) {

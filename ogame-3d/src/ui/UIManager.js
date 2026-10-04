@@ -1,3 +1,4 @@
+import './planet-area.css';
 import { ScoutController } from './views/ScoutController.js';
 import { ScoutReportsView } from './views/ScoutReportsView.js';
 import './scout.css';
@@ -10,7 +11,7 @@ import * as GameData from '../data/gameData.js';
 import { adminService } from '../services/AdminService.js';
 import { apiService } from '../services/ApiService.js';
 import { TechTreeManager } from './TechTreeManager.js';
-import { catalog } from '../data/catalog.js';
+import { catalog, evaluateEffect } from '../data/catalog.js';
 import { EntityBrowser } from './views/EntityBrowser.js';
 import { GalaxyView } from './views/GalaxyView.js';
 import { StrikeMap } from './views/StrikeMap.js';
@@ -574,13 +575,13 @@ export class UIManager {
     const root = document.getElementById(`${view}-browser`);
     if (!root) return null;
 
-    const isActive = (type) => (entity) => this.queueItems[type]?.itemId === entity.id
-      || this.lastPendingQueue.some((item) => item.type === type && item.itemId === entity.id);
+    const isActive = (type) => (entity) => [this.queueItems[type], ...this.lastPendingQueue].filter(Boolean).some(item => item.type === type && item.itemId === entity.id && (entity.id === 'terraforming' || String(item.planetId ?? 0) === String(gameState.currentPlanet ?? 0)));
     const configs = {
       buildings: {
         tabs: () => this.categoryTabs('building'),
         isInProgress: isActive('building'),
-        onCommand: (entity) => this.startConstruction(entity.id)
+        onCommand: (entity) => this.startConstruction(entity.id),
+        onDemolish: (entity) => this.demolishBuilding(entity.id)
       },
       research: {
         tabs: () => [{ key: 'research:all', label: '전체', type: 'research' }, ...this.categoryTabs('research')
@@ -626,37 +627,39 @@ export class UIManager {
   
   async startConstruction(buildingId) {
     try {
-      const result = await apiService.startBuilding(buildingId);
+      const result = await apiService.startBuilding(buildingId, String(gameState.currentPlanet ?? 0));
       if (result.snapshot) {
         gameState.syncFromServer(result.snapshot);
         this.hydrateQueueState(result.snapshot.queueState);
       }
       this.showNotification('건설 명령', `${result.queueItem.name} Lv ${result.queueItem.level}`, 'success');
       this.addActivityLog(`건설 명령 — ${result.queueItem.name} Lv ${result.queueItem.level}`);
-      this.renderBuildingSwiper();
+      this.refreshSyncedViews();
     } catch (err) {
       this.showNotification('명령 실패', err.message, 'error');
+      await this.syncUserDataFromServer();
     }
   }
   
   async startResearch(researchId) {
     try {
-      const result = await apiService.startResearch(researchId);
+      const result = await apiService.startResearch(researchId, String(gameState.currentPlanet ?? 0));
       if (result.snapshot) {
         gameState.syncFromServer(result.snapshot);
         this.hydrateQueueState(result.snapshot.queueState);
       }
       this.showNotification('연구 개시', `${result.queueItem.name} Lv ${result.queueItem.level}`, 'success');
       this.addActivityLog(`연구 개시 — ${result.queueItem.name} Lv ${result.queueItem.level}`);
-      this.renderResearchSwiper();
+      this.refreshSyncedViews();
     } catch (err) {
       this.showNotification('명령 실패', err.message, 'error');
+      await this.syncUserDataFromServer();
     }
   }
   
   async buildShip(shipId, count = 1, entityType = 'ship') {
     try {
-      const result = await apiService.buildShip(shipId, count, '0', entityType);
+      const result = await apiService.buildShip(shipId, count, String(gameState.currentPlanet ?? 0), entityType);
       if (result.snapshot) {
         gameState.syncFromServer(result.snapshot);
         this.hydrateQueueState(result.snapshot.queueState);
@@ -667,6 +670,7 @@ export class UIManager {
       this.renderShipyardSwiper();
     } catch (err) {
       this.showNotification('명령 실패', err.message, 'error');
+      await this.syncUserDataFromServer();
     }
   }
   
@@ -941,7 +945,57 @@ export class UIManager {
     breakdownEl.appendChild(list);
   }
   
+  async demolishBuilding(buildingId) {
+    const name = catalog.get('building', buildingId)?.name || buildingId;
+    const level = gameState.buildings[buildingId] || 0;
+    const entity = catalog.get('building', buildingId);
+    const nextStorage = { ...gameState.storage };
+    for (const [resource, rule] of Object.entries(entity?.effects?.storage || {})) {
+      // Same storage rule as the server; show losses before ordering demolition.
+      nextStorage[resource] = Math.max(gameState.defaultStorage?.[resource] ?? 10000, evaluateEffect(rule, Math.max(0, level - 1)));
+    }
+    const loss = Object.entries(nextStorage).filter(([key, cap]) => gameState.resources[key] > cap)
+      .map(([key, cap]) => `${key} ${formatAmount(gameState.resources[key] - cap)}`).join(', ');
+    if (!window.confirm(`${name} Lv ${level} → ${level - 1} 철거를 예약합니다. 완료 시 1칸 회수, 자원 환급 없음.${loss ? ` 저장 한도 감소 예상 손실: ${loss}` : ''}`)) return;
+    try {
+      const result = await apiService.demolishBuilding(buildingId, String(gameState.currentPlanet ?? 0));
+      gameState.syncFromServer(result.snapshot); this.hydrateQueueState(result.snapshot.queueState); this.refreshSyncedViews();
+      this.showNotification('철거 예약', name, 'success');
+    } catch (error) { this.showNotification('명령 실패', error.message, 'error'); await this.syncUserDataFromServer(); }
+  }
+
+  renderPlanetArea() {
+    const area = gameState.planet.area;
+    const modifiers = gameState.planet.productionModifiers;
+    const select = document.getElementById('planet-select');
+    if (select && document.activeElement !== select) {
+      select.innerHTML = (gameState.planets || []).map((p, index) => `<option value="${index}" ${index === gameState.currentPlanet ? 'selected' : ''}>${escapeHtml(p.name)} [${p.galaxy}:${p.system}:${p.planet}]</option>`).join('');
+    }
+    if (select && !select.onchange) select.onchange = async () => {
+      select.disabled = true;
+      try {
+        const result = await apiService.selectPlanet(select.value);
+        gameState.syncFromServer(result.snapshot); this.hydrateQueueState(result.snapshot.queueState); this.refreshSyncedViews();
+      } catch (error) { this.showNotification('선택 실패', error.message, 'error'); }
+      finally { select.disabled = false; select.blur(); this.renderPlanetArea(); }
+    };
+    if (!area) return;
+    const bonus = value => `${value >= 1 ? '+' : ''}${Math.round((value - 1) * 100)}%`;
+    const level = gameState.research.terraforming || 0;
+    const nextPercent = Math.min(100, area.baseUsablePercent + (level + 1) * 2);
+    const nextUsable = Math.floor(area.total * nextPercent / 100 + 1e-9);
+    const html = `<div class="area-heading"><strong>${escapeHtml(gameState.planet.name)} · 개발 현황</strong><span>전체 ${area.total}칸</span></div>
+      <p>가용률 <b>${area.usablePercent}%</b> · 기본 ${area.baseUsablePercent}% + 테라포밍 ${level * 2}%p (상한 100%)</p>
+      <progress max="${Math.max(1, area.usable)}" value="${Math.min(area.usable, area.used + area.reserved)}" aria-label="건설 가능 면적 사용량"></progress>
+      <p>사용 ${area.used}칸 · 예약 ${area.reserved}칸 · 건설 가능 ${area.usable}칸 · <b>남은 ${area.available}칸</b></p>
+      ${area.overCapacity ? '<p class="area-warning">면적 한도 초과: 기존 시설은 유지됩니다. 철거로 공간을 확보해 주세요.</p>' : ''}
+      <p>금속 ${bonus(modifiers?.metal ?? 1)} · 크리스털 ${bonus(modifiers?.crystal ?? 1)} · 중수소 ${bonus(modifiers?.deuterium ?? 1)} · 태양광 ${bonus(modifiers?.solar ?? 1)}</p>
+      <p class="detail-muted">건설·업그레이드마다 1칸 사용. ${level < 30 ? `테라포밍 다음 단계: ${nextPercent}% / ${nextUsable}칸 (+${nextUsable - area.usable}칸)` : '테라포밍 최대 레벨'}</p>`;
+    for (const id of ['building-area', 'research-area']) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
+  }
+
   updatePlanetInfo() {
+    this.renderPlanetArea();
     const nameEl = document.getElementById('planet-name');
     const sizeEl = document.getElementById('planet-size');
     const tempEl = document.getElementById('planet-temp');

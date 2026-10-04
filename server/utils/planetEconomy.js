@@ -1,3 +1,4 @@
+const { productionModifiers } = require('./planetArea');
 const GameConfig = require('../models/GameConfig');
 const entityConfigService = require('../services/EntityConfigService');
 
@@ -53,7 +54,8 @@ function calculateProduction(planet, speed = 1, resourceSettings = {}) {
     deuterium: (baseProd.deuterium ?? 0) * speed,
     energy: 0
   };
-  const multiplier = resourceSettings.productionMultiplier || 1;
+  const multiplier = resourceSettings.productionMultiplier ?? 1;
+  const modifiers = productionModifiers(planet);
 
   let energyProduction = 0;
   let energyConsumption = 0;
@@ -65,12 +67,12 @@ function calculateProduction(planet, speed = 1, resourceSettings = {}) {
 
     if (definition.effects?.production) {
       for (const [resource, rule] of Object.entries(definition.effects.production)) {
-        production[resource] += evaluateScaledFormula(rule, level) * multiplier * speed;
+        production[resource] += evaluateScaledFormula(rule, level) * (modifiers[resource] ?? 1) * multiplier * speed;
       }
     }
 
     if (definition.effects?.energyProduction?.amount) {
-      energyProduction += evaluateScaledFormula(definition.effects.energyProduction.amount, level);
+      energyProduction += evaluateScaledFormula(definition.effects.energyProduction.amount, level) * (definition.entityId === 'solarPlant' ? modifiers.solar : 1);
     }
 
     if (definition.effects?.energyConsumption?.amount) {

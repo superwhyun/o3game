@@ -135,6 +135,8 @@ export class GameState extends EventEmitter {
     console.log('[GameState.syncFromServer] Server speed set to:', this.serverSpeed);
     
     const currentPlanetIndex = userData.currentPlanet ?? 0;
+    this.currentPlanet = currentPlanetIndex;
+    this.defaultStorage = userData.defaultStorage || { metal: 10000, crystal: 10000, deuterium: 10000 };
     const planet = userData.planets[currentPlanetIndex] || userData.planets[0];
     console.log('[GameState.syncFromServer] Active planet:', planet);
     if (!planet) {
@@ -154,14 +156,14 @@ export class GameState extends EventEmitter {
     
     // Sync buildings
     if (planet.buildings) {
-      this.buildings = { ...this.buildings, ...planet.buildings };
+      this.buildings = { ...planet.buildings };
     }
     
     // Sync research (user-level, not planet-level)
     if (userData.research) {
-      this.research = { ...this.research, ...userData.research };
+      this.research = { ...userData.research };
     } else if (planet.research) {
-      this.research = { ...this.research, ...planet.research };
+      this.research = { ...planet.research };
     }
     
     // Sync fleet
@@ -170,21 +172,24 @@ export class GameState extends EventEmitter {
     }
 
     if (planet.defense) {
-      this.defense = { ...this.defense, ...planet.defense };
+      this.defense = { ...planet.defense };
     }
     
     // Sync planet info
     if (planet) {
       this.planet = {
         id: planet._id,
+        area: planet.area,
+        traits: planet.traits,
+        productionModifiers: planet.productionModifiers,
         name: planet.name || 'Colony-1',
         position: planet.position || 4,
         galaxy: planet.galaxy || 1,
         system: planet.system || 1,
         planet: planet.planet || 1,
-        minTemp: planet.minTemp || -20,
-        maxTemp: planet.maxTemp || 40,
-        diameter: planet.diameter || 12800
+        minTemp: planet.minTemp ?? -20,
+        maxTemp: planet.maxTemp ?? 40,
+        diameter: planet.diameter ?? 12800
       };
     }
 

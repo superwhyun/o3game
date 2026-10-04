@@ -21,7 +21,7 @@ async function supportsTransactions() {
 }
 async function requireTransactions() {
   if (!(await supportsTransactions())) {
-    throw Object.assign(new Error("함대 기능에는 트랜잭션을 지원하는 DB 연결이 필요합니다."), {
+    throw Object.assign(new Error("건설·함대 기능에는 트랜잭션을 지원하는 DB 연결이 필요합니다."), {
       code: 20, statusCode: 503,
     });
   }
@@ -81,7 +81,7 @@ function transactionalRoute(handler) {
         .json(
           error.responseBody || {
             error: unsupported
-              ? "함대 기능에는 트랜잭션을 지원하는 DB 연결이 필요합니다."
+              ? "건설·함대 기능에는 트랜잭션을 지원하는 DB 연결이 필요합니다."
               : conflict
                 ? "상태가 변경되었습니다. 최신 상태로 다시 시도하십시오."
                 : error.message,

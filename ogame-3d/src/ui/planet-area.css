@@ -1,0 +1,8 @@
+.planet-area { border: 1px solid var(--line, #394c58); padding: 14px 18px; margin: 0 0 16px; background: rgba(12,22,30,.85); font-size: .8rem; line-height: 1.7; }
+.planet-area p { margin: 5px 0; }
+.area-heading { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.planet-area progress { width: 100%; height: 7px; accent-color: #b3a16d; }
+.area-warning { color: #f8ad88; }
+#planet-select { max-width: 190px; background: #14212a; color: #e6e5db; border: 1px solid #53616b; padding: 4px; font: inherit; font-size: .7rem; }
+.detail-command { flex-wrap: wrap; }
+@media(max-width: 700px) { #planet-select { max-width: 110px; } .planet-area { padding: 10px; } }

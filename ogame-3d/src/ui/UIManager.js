@@ -2,6 +2,9 @@ import './planet-area.css';
 import { ScoutController } from './views/ScoutController.js';
 import { ScoutReportsView } from './views/ScoutReportsView.js';
 import './scout.css';
+import './entity-model.css';
+import { stopInspector, disposeInspector } from '../three/entities/ModelViewer.js';
+import { disposeThumbnails } from '../three/entities/ModelThumbnails.js';
 import { io } from 'socket.io-client';
 import { FleetFormationView } from './views/FleetFormationView.js';
 import { profileOf, shipImages, fillThumbnails } from './views/fleetCards.js';
@@ -28,6 +31,7 @@ export class UIManager {
   constructor(spaceScene) {
     this.spaceScene = spaceScene;
     this.currentView = 'dashboard';
+    window.addEventListener('pagehide', e => { if(!e.persisted){disposeInspector();disposeThumbnails();} });
     this.currentCategory = 'resources';
     this.currentShipType = 'civil';
     this.resourceChart = null;
@@ -410,6 +414,7 @@ export class UIManager {
   
   switchView(view) {
     if (view !== this.currentView && this.currentView === 'fleet' && this.formationView && !this.formationView.guard(() => this.switchView(view))) return;
+    stopInspector();
     this.currentView = view;
     this.navButtons.forEach(button => button.classList.toggle('active', button.dataset.view === view));
     Object.values(this.panels).forEach(panel => {
@@ -578,12 +583,14 @@ export class UIManager {
     const isActive = (type) => (entity) => [this.queueItems[type], ...this.lastPendingQueue].filter(Boolean).some(item => item.type === type && item.itemId === entity.id && (entity.id === 'terraforming' || String(item.planetId ?? 0) === String(gameState.currentPlanet ?? 0)));
     const configs = {
       buildings: {
+        showModel: true,
         tabs: () => this.categoryTabs('building'),
         isInProgress: isActive('building'),
         onCommand: (entity) => this.startConstruction(entity.id),
         onDemolish: (entity) => this.demolishBuilding(entity.id)
       },
       research: {
+        showModel: true,
         tabs: () => [{ key: 'research:all', label: '전체', type: 'research' }, ...this.categoryTabs('research')
           .filter((tab) => tab.category)],
         isInProgress: isActive('research'),
@@ -1471,6 +1478,13 @@ export class UIManager {
     const total = activeCount + (pendingQueue?.length || 0);
     
     if (total === 0) {
+      // Clear panel cards too: a completed queue must not leave a stale cancel button.
+      if(queueList) queueList.innerHTML = '';
+      if(queueSidebarList) queueSidebarList.innerHTML = '';
+      for(const id of ['buildings-panel-queue','research-panel-queue','shipyard-panel-queue']) {
+        const panelQueue = document.getElementById(id);
+        if(panelQueue) {panelQueue.innerHTML = ''; const section=panelQueue.closest('.panel-queue-section'); if(section)section.style.display='none';}
+      }
       if (queueContainer) queueContainer.classList.add('hidden');
       if (queueSidebarEmpty) queueSidebarEmpty.style.display = 'block';
       if (queueSidebarList) queueSidebarList.style.display = 'none';

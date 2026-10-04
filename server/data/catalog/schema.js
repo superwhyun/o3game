@@ -16,7 +16,7 @@
  *   requires      { buildings: { id: level }, research: { id: level } }
  *   effects       building effects (production, storage, constructionModifiers…)
  *   stats         combat/fleet stats (ship/defense)
- *   model         3D model spec (ship/defense) — see ogame-3d/src/three/ships
+ *   model         3D model spec — see ogame-3d/src/three/entities and ships
  *   status        'active' | 'draft' | 'disabled' (default 'active')
  */
 
@@ -138,6 +138,9 @@ function validateCatalog(specsByType) {
       }
       if (seen.has(spec.id)) errors.push(`${label} is defined twice`);
       seen.add(spec.id);
+      if (spec.model && ['building', 'research'].includes(entityType)) {
+        if (spec.model.kind !== entityType || !ID_PATTERN.test(spec.model.archetype || '') || !Number.isInteger(spec.model.styleVersion) || spec.model.styleVersion < 1) errors.push(`${label} has an invalid visual model`);
+      }
       if (!spec.name) errors.push(`${label} is missing a name`);
       if (!(Number(spec.buildTime) > 0)) errors.push(`${label} needs a positive buildTime`);
       for (const [key, value] of Object.entries(spec.cost || {})) {

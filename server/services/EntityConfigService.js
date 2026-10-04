@@ -21,7 +21,7 @@ class EntityConfigService {
 
   _normalizeMergedDocument(seed = {}, doc = {}) {
     const display = Object.fromEntries(
-      Object.entries({ ...(seed.display || {}), ...(doc.display || {}) }).filter(([, value]) => value !== undefined)
+      Object.entries({ ...(seed.display || {}), ...Object.fromEntries(Object.entries(doc.display || {}).filter(([, value]) => value !== undefined)) }).filter(([, value]) => value !== undefined)
     );
     const costModel = {
       ...(seed.costModel || {}),

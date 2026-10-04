@@ -15,6 +15,7 @@ module.exports = [
   },
   {
     id: 'energyTechnology',
+    model: { kind: 'research', archetype: 'energyTechnology', styleVersion: 1 },
     name: '에너지 기술',
     icon: '⚡',
     category: 'basic',
@@ -27,6 +28,7 @@ module.exports = [
 
   {
     id: 'laserTechnology',
+    model: { kind: 'research', archetype: 'laserTechnology', styleVersion: 1 },
     name: '레이저 기술',
     icon: '🔴',
     category: 'combat',
@@ -39,6 +41,7 @@ module.exports = [
 
   {
     id: 'ionTechnology',
+    model: { kind: 'research', archetype: 'ionTechnology', styleVersion: 1 },
     name: '이온 기술',
     icon: '🔵',
     category: 'combat',
@@ -54,6 +57,7 @@ module.exports = [
 
   {
     id: 'plasmaTechnology',
+    model: { kind: 'research', archetype: 'plasmaTechnology', styleVersion: 1 },
     name: '플라즈마 기술',
     icon: '🟣',
     category: 'combat',
@@ -69,6 +73,7 @@ module.exports = [
 
   {
     id: 'combustionDrive',
+    model: { kind: 'research', archetype: 'combustionDrive', styleVersion: 1 },
     name: '연소 엔진',
     icon: '🔥',
     category: 'drive',
@@ -81,6 +86,7 @@ module.exports = [
 
   {
     id: 'impulseDrive',
+    model: { kind: 'research', archetype: 'impulseDrive', styleVersion: 1 },
     name: '충돌 엔진',
     icon: '💨',
     category: 'drive',
@@ -93,6 +99,7 @@ module.exports = [
 
   {
     id: 'hyperspaceDrive',
+    model: { kind: 'research', archetype: 'hyperspaceDrive', styleVersion: 1 },
     name: '하이퍼스페이스 엔진',
     icon: '🌌',
     category: 'drive',
@@ -108,6 +115,7 @@ module.exports = [
 
   {
     id: 'hyperspaceTechnology',
+    model: { kind: 'research', archetype: 'hyperspaceTechnology', styleVersion: 1 },
     name: '하이퍼스페이스 기술',
     icon: '🌀',
     category: 'basic',
@@ -119,6 +127,7 @@ module.exports = [
 
   {
     id: 'espionageTechnology',
+    model: { kind: 'research', archetype: 'espionageTechnology', styleVersion: 1 },
     name: '첩보 기술',
     icon: '🕵️',
     category: 'basic',
@@ -130,6 +139,7 @@ module.exports = [
 
   {
     id: 'computerTechnology',
+    model: { kind: 'research', archetype: 'computerTechnology', styleVersion: 1 },
     name: '컴퓨터 기술',
     icon: '💻',
     category: 'basic',
@@ -141,6 +151,7 @@ module.exports = [
 
   {
     id: 'astrophysics',
+    model: { kind: 'research', archetype: 'astrophysics', styleVersion: 1 },
     name: '천체물리학',
     icon: '🔭',
     category: 'basic',
@@ -152,6 +163,7 @@ module.exports = [
 
   {
     id: 'gravitonTechnology',
+    model: { kind: 'research', archetype: 'gravitonTechnology', styleVersion: 1 },
     name: '중력자 기술',
     icon: '⚫',
     category: 'basic',
@@ -163,6 +175,7 @@ module.exports = [
 
   {
     id: 'weaponsTechnology',
+    model: { kind: 'research', archetype: 'weaponsTechnology', styleVersion: 1 },
     name: '무기 기술',
     icon: '⚔️',
     category: 'combat',
@@ -174,6 +187,7 @@ module.exports = [
 
   {
     id: 'shieldingTechnology',
+    model: { kind: 'research', archetype: 'shieldingTechnology', styleVersion: 1 },
     name: '보호막 기술',
     icon: '🛡️',
     category: 'combat',
@@ -185,6 +199,7 @@ module.exports = [
 
   {
     id: 'armorTechnology',
+    model: { kind: 'research', archetype: 'armorTechnology', styleVersion: 1 },
     name: '장갑 기술',
     icon: '🧱',
     category: 'combat',

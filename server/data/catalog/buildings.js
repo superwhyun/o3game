@@ -8,6 +8,7 @@
 module.exports = [
   {
     id: 'metalMine',
+    model: { kind: 'building', archetype: 'metalMine', styleVersion: 1 },
     name: '금속 광산',
     icon: '⛏️',
     category: 'resources',
@@ -23,6 +24,7 @@ module.exports = [
 
   {
     id: 'crystalMine',
+    model: { kind: 'building', archetype: 'crystalMine', styleVersion: 1 },
     name: '수정 광산',
     icon: '💎',
     category: 'resources',
@@ -38,6 +40,7 @@ module.exports = [
 
   {
     id: 'deuteriumSynthesizer',
+    model: { kind: 'building', archetype: 'deuteriumSynthesizer', styleVersion: 1 },
     name: '중수소 합성기',
     icon: '⚗️',
     category: 'resources',
@@ -53,6 +56,7 @@ module.exports = [
 
   {
     id: 'solarPlant',
+    model: { kind: 'building', archetype: 'solarPlant', styleVersion: 1 },
     name: '태양광 발전소',
     icon: '☀️',
     category: 'resources',
@@ -67,6 +71,7 @@ module.exports = [
 
   {
     id: 'fusionReactor',
+    model: { kind: 'building', archetype: 'fusionReactor', styleVersion: 1 },
     name: '핵융합 발전소',
     icon: '⚛️',
     category: 'resources',
@@ -82,6 +87,7 @@ module.exports = [
 
   {
     id: 'robotFactory',
+    model: { kind: 'building', archetype: 'robotFactory', styleVersion: 1 },
     name: '로봇 공장',
     icon: '🤖',
     category: 'facilities',
@@ -96,6 +102,7 @@ module.exports = [
 
   {
     id: 'shipyard',
+    model: { kind: 'building', archetype: 'shipyard', styleVersion: 1 },
     name: '함선 공장',
     icon: '🏭',
     category: 'facilities',
@@ -111,6 +118,7 @@ module.exports = [
 
   {
     id: 'researchLab',
+    model: { kind: 'building', archetype: 'researchLab', styleVersion: 1 },
     name: '연구소',
     icon: '🔬',
     category: 'facilities',
@@ -125,6 +133,7 @@ module.exports = [
 
   {
     id: 'naniteFactory',
+    model: { kind: 'building', archetype: 'naniteFactory', styleVersion: 1 },
     name: '나노 머신 공장',
     icon: '🔧',
     category: 'facilities',
@@ -140,6 +149,7 @@ module.exports = [
 
   {
     id: 'metalStorage',
+    model: { kind: 'building', archetype: 'metalStorage', styleVersion: 1 },
     name: '금속 저장고',
     icon: '📦',
     category: 'facilities',
@@ -162,6 +172,7 @@ module.exports = [
 
   {
     id: 'crystalStorage',
+    model: { kind: 'building', archetype: 'crystalStorage', styleVersion: 1 },
     name: '수정 저장고',
     icon: '📦',
     category: 'facilities',
@@ -184,6 +195,7 @@ module.exports = [
 
   {
     id: 'deuteriumTank',
+    model: { kind: 'building', archetype: 'deuteriumTank', styleVersion: 1 },
     name: '중수소 탱크',
     icon: '🛢️',
     category: 'facilities',

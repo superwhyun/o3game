@@ -41,7 +41,7 @@ const entityBaseConfigSchema = new mongoose.Schema({
     icon: { type: String, default: '' },
     category: { type: String, default: '' },
     description: { type: String, default: '' },
-    // 3D model spec for ships/defense (see ogame-3d/src/three/ships)
+    // 3D model spec for catalog exhibits (see ogame-3d/src/three/entities and ships)
     model: { type: mongoose.Schema.Types.Mixed, default: undefined }
   },
   requirements: {

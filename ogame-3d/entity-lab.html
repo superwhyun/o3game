@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>시설·연구 모형 전시</title>
+    <link rel="stylesheet" href="/src/dev/shipLab.css" />
+    <style>
+      .lab-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .lab-viewer {
+        height: 400px;
+      }
+      .lab-card img {
+        aspect-ratio: 224/144;
+      }
+      .lab-title {
+        grid-column: 1/-1;
+        color: #c8a96a;
+        margin-top: 16px;
+      }
+      @media (max-width: 700px) {
+        .lab-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="lab">
+      <header>
+        <h1>시설 · 연구 모형 전시</h1>
+        <p>
+          현재 카탈로그의 시설 성장 구간과 연구 실험 장치. 게임에서 로그인한 뒤
+          열어주세요.
+        </p>
+        <p id="lab-error"></p>
+      </header>
+      <div class="lab-viewer" id="entity-viewer"></div>
+      <section id="entity-grid" class="lab-grid"></section>
+    </main>
+    <script type="module" src="/src/dev/entityLab.js"></script>
+  </body>
+</html>

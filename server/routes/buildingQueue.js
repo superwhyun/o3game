@@ -1,3 +1,4 @@
+const { transactionalRoute } = require('../services/transactions');
 const express = require('express');
 const router = express.Router();
 const BuildingQueue = require('../models/BuildingQueue');
@@ -45,12 +46,13 @@ router.get('/', authMiddleware, async (req, res) => {
     const settled = await settleUserState(req.user._id, new Date());
     res.json(settled.queueState);
   } catch (error) {
+    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
     res.status(500).json({ error: error.message });
   }
 });
 
 // POST start building
-router.post('/build', authMiddleware, async (req, res) => {
+router.post('/build', authMiddleware, transactionalRoute(async (req, res) => {
   try {
     const { buildingId, planetId = '0' } = req.body;
     
@@ -140,13 +142,14 @@ router.post('/build', authMiddleware, async (req, res) => {
       snapshot: refreshed.snapshot
     });
   } catch (error) {
+    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
     console.error(`[BuildingQueue.build] Error:`, error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // POST start research
-router.post('/research', authMiddleware, async (req, res) => {
+router.post('/research', authMiddleware, transactionalRoute(async (req, res) => {
   try {
     const { researchId } = req.body;
     
@@ -231,12 +234,13 @@ router.post('/research', authMiddleware, async (req, res) => {
       snapshot: refreshed.snapshot
     });
   } catch (error) {
+    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // POST build ship
-router.post('/ship', authMiddleware, async (req, res) => {
+router.post('/ship', authMiddleware, transactionalRoute(async (req, res) => {
   try {
     const { shipId, count = 1, planetId = '0', entityType = 'ship' } = req.body;
     if (!['ship', 'defense'].includes(entityType)) {
@@ -322,12 +326,13 @@ router.post('/ship', authMiddleware, async (req, res) => {
       snapshot: refreshed.snapshot
     });
   } catch (error) {
+    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // POST check completion
-router.post('/check/:id', authMiddleware, async (req, res) => {
+router.post('/check/:id', authMiddleware, transactionalRoute(async (req, res) => {
   try {
     const queueItem = await BuildingQueue.findOne({
       _id: req.params.id,
@@ -357,12 +362,13 @@ router.post('/check/:id', authMiddleware, async (req, res) => {
       endTime: settledQueue?.endTime || queueItem.endTime
     });
   } catch (error) {
+    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // DELETE cancel
-router.delete('/:id', authMiddleware, async (req, res) => {
+router.delete('/:id', authMiddleware, transactionalRoute(async (req, res) => {
   try {
     const queueItem = await BuildingQueue.findOne({
       _id: req.params.id,
@@ -398,9 +404,10 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     
     res.json({ message: 'Cancelled', refundApplied: !!queueItem.costSnapshot });
   } catch (error) {
+    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
     console.error(`[BuildingQueue.cancel] Error:`, error);
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 module.exports = router;

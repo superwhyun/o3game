@@ -1,4 +1,4 @@
-const POSITION_COUNT = 15;
+const { GALAXY_COUNT, POSITION_COUNT, SYSTEM_COUNT } = require('./universe');
 
 function assertCoordinate(value, label, maximum) {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
@@ -11,13 +11,16 @@ function idToString(value) {
 }
 
 function buildGalaxySystem({ galaxy, system, requestingUserId, users }) {
-  assertCoordinate(galaxy, 'galaxy', 9);
-  assertCoordinate(system, 'system', 499);
+  assertCoordinate(galaxy, 'galaxy', GALAXY_COUNT);
+  assertCoordinate(system, 'system', SYSTEM_COUNT);
 
   if (!Array.isArray(users)) {
     throw new TypeError('users must be an array');
   }
 
+  // Slots claimed twice (corrupt data). The first claimant is shown; the rest are
+  // reported to the caller instead of failing the whole system view.
+  const conflicts = [];
   const positions = Array.from({ length: POSITION_COUNT }, (_, index) => ({
     position: index + 1,
     occupied: false
@@ -30,12 +33,14 @@ function buildGalaxySystem({ galaxy, system, requestingUserId, users }) {
       assertCoordinate(planet.planet, 'planet', POSITION_COUNT);
       const target = positions[planet.planet - 1];
       if (target.occupied) {
-        throw new Error(`duplicate planet position ${planet.planet}`);
+        conflicts.push({ position: planet.planet, userId: idToString(user._id) });
+        continue;
       }
 
       target.occupied = true;
       target.owner = idToString(user._id) === idToString(requestingUserId) ? 'self' : 'other';
       target.planet = {
+        id: idToString(planet._id),
         name: planet.name || `Planet ${planet.planet}`,
         username: user.username,
         isOnline: Boolean(user.isOnline)
@@ -43,7 +48,7 @@ function buildGalaxySystem({ galaxy, system, requestingUserId, users }) {
     }
   }
 
-  return { galaxy, system, positions };
+  return { galaxy, system, positions, conflicts };
 }
 
 module.exports = { buildGalaxySystem };

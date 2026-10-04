@@ -25,9 +25,8 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Username or email already exists' });
     }
     
-    // Create user
-    const user = new User({ username, email, password });
-    await user.save();
+    // Create user (home planet is allocated on a free coordinate)
+    const user = await User.createWithHomePlanet({ username, email, password });
     
     // Generate token
     const token = jwt.sign(
@@ -158,15 +157,14 @@ router.post('/setup-admin', async (req, res) => {
       return res.status(400).json({ error: 'Username or email already exists' });
     }
     
-    // Create admin user
-    const user = new User({ 
-      username, 
-      email, 
+    // Create admin user (home planet is allocated on a free coordinate)
+    const user = await User.createWithHomePlanet({
+      username,
+      email,
       password,
       isAdmin: true,
       adminRole: 'superadmin'
     });
-    await user.save();
     
     // Generate token
     const token = jwt.sign(

@@ -266,7 +266,7 @@ export class SpaceScene {
     const ringGradient = ringCtx.createLinearGradient(0, 0, 64, 0);
     ringGradient.addColorStop(0, 'rgba(79, 172, 254, 0)');
     ringGradient.addColorStop(0.2, 'rgba(79, 172, 254, 0.3)');
-    ringGradient.addColorStop(0.5, 'rgba(168, 85, 247, 0.5)');
+    ringGradient.addColorStop(0.5, 'rgba(200, 169, 106, 0.45)');
     ringGradient.addColorStop(0.8, 'rgba(79, 172, 254, 0.3)');
     ringGradient.addColorStop(1, 'rgba(79, 172, 254, 0)');
     ringCtx.fillStyle = ringGradient;

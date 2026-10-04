@@ -80,6 +80,18 @@ test('assertCargoAvailable prevents sending more resources than the origin has',
   );
 });
 
+test('assertCargoAvailable accepts fractional stored resources (production accrues continuously)', () => {
+  assert.deepEqual(
+    assertCargoAvailable({ metal: 500 }, { metal: 500.73, crystal: 300.2, deuterium: 99.99 }),
+    { metal: 500, crystal: 0, deuterium: 0 }
+  );
+  assert.doesNotThrow(() => assertCargoAvailable({}, { metal: 0.5, crystal: 0.1, deuterium: 0 }));
+  // Only whole units can be loaded: 500.73 stored still means 500 loadable.
+  assert.throws(() => assertCargoAvailable({ metal: 501 }, { metal: 500.73 }), /Insufficient metal/);
+  assert.throws(() => assertCargoAvailable({}, { metal: -1 }), /origin metal/);
+  assert.throws(() => assertCargoAvailable({}, { metal: Number.NaN }), /origin metal/);
+});
+
 test('assertNonEmptyFleet requires at least one selected ship', () => {
   assert.doesNotThrow(() => assertNonEmptyFleet({ lightFighter: 1 }));
   assert.throws(() => assertNonEmptyFleet({}), /at least one ship/);

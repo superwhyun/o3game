@@ -1,9 +1,27 @@
+import { ScoutController } from './views/ScoutController.js';
+import { ScoutReportsView } from './views/ScoutReportsView.js';
+import './scout.css';
+import { io } from 'socket.io-client';
+import { FleetFormationView } from './views/FleetFormationView.js';
+import { profileOf, shipImages, fillThumbnails } from './views/fleetCards.js';
 import * as THREE from 'three';
 import { gameState } from '../core/GameState.js';
 import * as GameData from '../data/gameData.js';
 import { adminService } from '../services/AdminService.js';
 import { apiService } from '../services/ApiService.js';
 import { TechTreeManager } from './TechTreeManager.js';
+import { catalog } from '../data/catalog.js';
+import { EntityBrowser } from './views/EntityBrowser.js';
+import { GalaxyView } from './views/GalaxyView.js';
+import { StrikeMap } from './views/StrikeMap.js';
+import { CATEGORY_LABELS, escapeHtml, formatAmount, formatDuration, TYPE_LABELS } from './dom.js';
+import { getShipThumbnail } from '../three/ships/ShipThumbnails.js';
+import { resolveModelSpec } from '../three/ships/ShipModelFactory.js';
+
+const BROWSER_REFRESH_MS = 4000;
+const MAX_NOTIFICATIONS = 4;
+// Calendar flavor: 2026 AD is shown as 宇宙暦 796.
+const SPACE_ERA_OFFSET = 1230;
 
 export class UIManager {
   constructor(spaceScene) {
@@ -13,15 +31,15 @@ export class UIManager {
     this.currentShipType = 'civil';
     this.resourceChart = null;
     this.chartData = { labels: [], metal: [], crystal: [], deuterium: [] };
-    this.buildingSwiper = null;
-    this.researchSwiper = null;
-    this.shipyardSwiper = null;
+    this.browsers = {};
+    this.browserRefreshTimer = null;
     this.activityLog = [];
     this.queueCountdown = null;  // Local countdown timer
     this.queueItems = {
       building: null,
       research: null,
-      ship: null
+      ship: null,
+      defense: null
     }; // Track each queue type separately
     this.lastPendingQueue = []; // Store the most recent pending items
     this.initialized = false; // Prevent duplicate init
@@ -110,7 +128,8 @@ export class UIManager {
     this.renderBuildingSwiper();
     this.renderResearchSwiper();
     this.renderShipyardSwiper();
-    console.log('[initializeDashboard] Dashboard initialized with resources:', gameState.resources);
+    this.startBrowserRefresh();
+    this.startMilitarySync();
   }
   
   showLoginScreen() {
@@ -128,10 +147,8 @@ export class UIManager {
     
     this.userSection.innerHTML = `
       <div class="user-info">
-        <span class="username">${user.username}</span>
-        <button class="holo-btn-small" id="logout-btn">
-          <span class="icon">🚪</span>
-        </button>
+        <span class="username">${escapeHtml(user.username)}</span>
+        <button class="holo-btn-small" id="logout-btn" title="로그아웃">퇴청</button>
       </div>
     `;
     
@@ -146,6 +163,11 @@ export class UIManager {
       console.log('[syncUserDataFromServer] Raw userData:', userData);
       console.log('[syncUserDataFromServer] planets:', userData.planets);
       
+      // Entity catalog drives every list; refetch when the server revision changes.
+      if (!catalog.loaded || (userData.entityConfigRevision && userData.entityConfigRevision !== catalog.revision)) {
+        await catalog.load(apiService);
+      }
+
       // Sync to GameState
       gameState.syncFromServer(userData);
       if (userData.queueState) {
@@ -163,8 +185,7 @@ export class UIManager {
       // 🔐 Check Admin access again after sync
       const adminBtn = document.getElementById('admin-btn');
       if (adminBtn) {
-        const AdminService = (await import('../services/adminService.js')).adminService;
-        if (AdminService.isAdmin()) {
+        if (adminService.isAdmin()) {
           adminBtn.classList.remove('hidden');
         } else {
           adminBtn.classList.add('hidden');
@@ -190,6 +211,7 @@ export class UIManager {
     this.queueItems.building = queueState.building;
     this.queueItems.research = queueState.research;
     this.queueItems.ship = queueState.ship;
+    this.queueItems.defense = queueState.defense || null;
     this.lastPendingQueue = queueState.queue || [];
 
     this.updateBuildQueueUI(
@@ -242,6 +264,7 @@ export class UIManager {
       shipyard: document.getElementById('shipyard-panel'),
       galaxy: document.getElementById('galaxy-panel'),
       fleet: document.getElementById('fleet-panel'),
+      combat: document.getElementById('combat-panel'),
       admin: document.getElementById('admin-panel')
     };
     // Auth elements
@@ -270,8 +293,6 @@ export class UIManager {
       btn.addEventListener('click', () => {
         const view = btn.dataset.view;
         this.switchView(view);
-        this.navButtons.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
       });
     });
     this.categoryButtons.forEach(btn => {
@@ -311,6 +332,7 @@ export class UIManager {
   }
   
   setupGameStateListeners() {
+    gameState.on('fleetStateChanged', () => { this.renderFleet(); this.updateScoutUI(); });
     gameState.on('resourceChanged', () => this.updateResourceDisplay());
     gameState.on('productionUpdated', () => { 
       this.updateResourceDisplay(); 
@@ -319,7 +341,7 @@ export class UIManager {
     gameState.on('buildingUpgraded', ({ buildingId }) => {
       const building = GameData.BUILDINGS[buildingId];
       this.showNotification('Construction Complete', building?.name + ' upgraded!', 'success');
-      this.addActivityLog('Built: ' + building?.name);
+      this.addActivityLog('건설 완료 — ' + building?.name);
       this.renderBuildingSwiper();
       this.updateDashboardMetrics();
       if (this.spaceScene) this.spaceScene.createExplosion(new THREE.Vector3(0, 0, 4), 1.5);
@@ -327,7 +349,7 @@ export class UIManager {
     gameState.on('researchCompleted', ({ researchId }) => {
       const research = GameData.RESEARCH[researchId];
       this.showNotification('Research Complete', research?.name + ' researched!', 'success');
-      this.addActivityLog('Researched: ' + research?.name);
+      this.addActivityLog('연구 완료 — ' + research?.name);
       this.renderResearchSwiper();
     });
     
@@ -336,10 +358,16 @@ export class UIManager {
   }
   
   startClock() {
+    const dateEl = document.getElementById('system-date');
+    const timeEl = document.getElementById('system-time');
     const updateTime = () => {
       const now = new Date();
-      const timeEl = document.getElementById('system-time');
-      if (timeEl) timeEl.textContent = now.toLocaleTimeString('ko-KR', { hour12: false });
+      if (timeEl) timeEl.textContent = [now.getHours(), now.getMinutes(), now.getSeconds()].map((part) => String(part).padStart(2, '0')).join(':');
+      if (dateEl) {
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        dateEl.textContent = `宇宙暦 ${now.getFullYear() - SPACE_ERA_OFFSET}.${month}.${day}`;
+      }
     };
     updateTime();
     setInterval(updateTime, 1000);
@@ -360,11 +388,11 @@ export class UIManager {
   applyEnergySavingMode(enabled) {
     if (enabled) {
       document.body.classList.add('esm-mode');
-      if (this.esmStatusText) this.esmStatusText.textContent = 'BATTERY SAVER';
+      if (this.esmStatusText) this.esmStatusText.textContent = '절전';
       localStorage.setItem('esm_enabled', 'true');
     } else {
       document.body.classList.remove('esm-mode');
-      if (this.esmStatusText) this.esmStatusText.textContent = 'PERFORMANCE';
+      if (this.esmStatusText) this.esmStatusText.textContent = '표준';
       localStorage.setItem('esm_enabled', 'false');
     }
 
@@ -380,7 +408,9 @@ export class UIManager {
   }
   
   switchView(view) {
+    if (view !== this.currentView && this.currentView === 'fleet' && this.formationView && !this.formationView.guard(() => this.switchView(view))) return;
     this.currentView = view;
+    this.navButtons.forEach(button => button.classList.toggle('active', button.dataset.view === view));
     Object.values(this.panels).forEach(panel => {
       if (panel) panel.classList.add('hidden');
     });
@@ -397,8 +427,12 @@ export class UIManager {
       }
     }
 
-    if (view === 'galaxy') this.renderGalaxy();
-    if (view === 'fleet') this.renderFleet();
+    if (view !== 'combat') { this.strikeMap?.endDrag(); this.strikeMap?.closeConfirm(); }
+    if (view === 'galaxy') { this.renderGalaxy(); this.syncMilitaryState(); }
+    if (view === 'fleet' || view === 'combat') { this.renderFleet(); this.syncMilitaryState(); }
+    if (view === 'buildings') this.renderBuildingSwiper();
+    if (view === 'research') this.renderResearchSwiper();
+    if (view === 'shipyard') this.renderShipyardSwiper();
     if (view === 'admin') this.initAdminPanel();
     
     // Refresh queue display to apply view-based filtering immediately
@@ -411,58 +445,29 @@ export class UIManager {
   }
   
   updateResourceDisplay() {
-    const { resources, productionRates, energyProduction, energyConsumption } = gameState;
-    
-    // Debug: log when resources change significantly
-    if (Math.abs(resources.metal - (this._lastMetal || 0)) > 100) {
-      console.log('[updateResourceDisplay] Metal changed:', this._lastMetal, '->', resources.metal);
-      console.log('[updateResourceDisplay] gameState === window.gameState:', gameState === window.gameState);
-      console.log('[updateResourceDisplay] gameState.resources:', gameState.resources);
-      this._lastMetal = resources.metal;
-    }
-    
-    // 소수점 첫째 자리에서 반올림하는 헬퍼 함수
+    const { resources, productionRates, energyProduction, energyConsumption, storage } = gameState;
     const round1 = (num) => Math.round(num * 10) / 10;
-    const formatFillLine = (current, capacity) => {
-      if (!capacity) return '0.0%';
-      return `${Math.min((current / capacity) * 100, 100).toFixed(1)}%`;
-    };
-    
-    if (this.resourceElements.metal.count) {
-      this.resourceElements.metal.count.textContent = GameData.formatNumber(round1(resources.metal));
-      this.resourceElements.metal.rate.textContent = '+' + GameData.formatNumber(round1(productionRates.metal)) + '/h';
-      const metalPct = Math.min((resources.metal / gameState.storage.metal) * 100, 100);
-      this.resourceElements.metal.ring.style.strokeDashoffset = 283 - (283 * metalPct / 100);
-      if (this.resourceElements.metal.fill) {
-        this.resourceElements.metal.fill.textContent = formatFillLine(resources.metal, gameState.storage.metal);
-      }
+
+    for (const resource of ['metal', 'crystal', 'deuterium']) {
+      const el = this.resourceElements[resource];
+      if (!el.count) continue;
+      const rate = round1(productionRates[resource]);
+      const pct = storage[resource] ? Math.min((resources[resource] / storage[resource]) * 100, 100) : 0;
+      el.count.textContent = GameData.formatNumber(round1(resources[resource]));
+      el.rate.textContent = (rate >= 0 ? '+' : '') + GameData.formatNumber(rate) + '/h';
+      if (el.fill) el.fill.textContent = `${pct.toFixed(1)}%`;
+      el.ring?.style.setProperty('--fill', (pct / 100).toFixed(4));
+      el.ring?.closest('[data-resource]')?.classList.toggle('is-full', pct >= 99.5);
     }
-    
-    if (this.resourceElements.crystal.count) {
-      this.resourceElements.crystal.count.textContent = GameData.formatNumber(round1(resources.crystal));
-      this.resourceElements.crystal.rate.textContent = '+' + GameData.formatNumber(round1(productionRates.crystal)) + '/h';
-      const crystalPct = Math.min((resources.crystal / gameState.storage.crystal) * 100, 100);
-      this.resourceElements.crystal.ring.style.strokeDashoffset = 283 - (283 * crystalPct / 100);
-      if (this.resourceElements.crystal.fill) {
-        this.resourceElements.crystal.fill.textContent = formatFillLine(resources.crystal, gameState.storage.crystal);
-      }
-    }
-    
-    if (this.resourceElements.deuterium.count) {
-      this.resourceElements.deuterium.count.textContent = GameData.formatNumber(round1(resources.deuterium));
-      this.resourceElements.deuterium.rate.textContent = (productionRates.deuterium >= 0 ? '+' : '') + GameData.formatNumber(round1(productionRates.deuterium)) + '/h';
-      const deutPct = Math.min((resources.deuterium / gameState.storage.deuterium) * 100, 100);
-      this.resourceElements.deuterium.ring.style.strokeDashoffset = 283 - (283 * deutPct / 100);
-      if (this.resourceElements.deuterium.fill) {
-        this.resourceElements.deuterium.fill.textContent = formatFillLine(resources.deuterium, gameState.storage.deuterium);
-      }
-    }
-    
-    if (this.resourceElements.energy.count) {
+
+    const energy = this.resourceElements.energy;
+    if (energy.count) {
       const energyDiff = round1(energyProduction - energyConsumption);
-      this.resourceElements.energy.count.textContent = (energyDiff >= 0 ? '+' : '') + GameData.formatNumber(energyDiff);
-      this.resourceElements.energy.rate.textContent = GameData.formatNumber(round1(energyProduction)) + '/' + GameData.formatNumber(round1(energyConsumption));
-      this.resourceElements.energy.count.style.color = energyDiff >= 0 ? '#22c55e' : '#ef4444';
+      energy.count.textContent = (energyDiff >= 0 ? '+' : '') + GameData.formatNumber(energyDiff);
+      energy.rate.textContent = GameData.formatNumber(round1(energyProduction)) + '/' + GameData.formatNumber(round1(energyConsumption));
+      energy.count.closest('[data-resource]')?.classList.toggle('is-negative', energyDiff < 0);
+      const usage = energyProduction > 0 ? Math.min((energyConsumption / energyProduction) * 100, 100) : 100;
+      energy.ring?.style.setProperty('--fill', (usage / 100).toFixed(4));
     }
   }
   
@@ -485,18 +490,18 @@ export class UIManager {
         data: {
           labels: this.chartData.labels,
           datasets: [
-            { label: 'Metal', data: this.chartData.metal, borderColor: '#9ca3af', backgroundColor: 'rgba(156,163,175,0.1)', tension: 0.4, pointRadius: 0 },
-            { label: 'Crystal', data: this.chartData.crystal, borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.1)', tension: 0.4, pointRadius: 0 },
-            { label: 'Deuterium', data: this.chartData.deuterium, borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.1)', tension: 0.4, pointRadius: 0 }
+            { label: '금속', data: this.chartData.metal, borderColor: GameData.RESOURCES.metal.color, borderWidth: 1.5, tension: 0.3, pointRadius: 0 },
+            { label: '수정', data: this.chartData.crystal, borderColor: GameData.RESOURCES.crystal.color, borderWidth: 1.5, tension: 0.3, pointRadius: 0 },
+            { label: '중수소', data: this.chartData.deuterium, borderColor: GameData.RESOURCES.deuterium.color, borderWidth: 1.5, tension: 0.3, pointRadius: 0 }
           ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: '#fff', font: { family: 'Orbitron' } } } },
+          plugins: { legend: { align: 'end', labels: { color: '#a9b2c2', boxWidth: 12, boxHeight: 2, font: { family: 'IBM Plex Sans KR', size: 13 } } } },
           scales: {
             x: { display: false },
-            y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'rgba(255,255,255,0.6)', font: { family: 'Rajdhani' } } }
+            y: { border: { display: false }, grid: { color: 'rgba(200,169,106,0.08)' }, ticks: { color: '#7e8a9e', font: { family: 'IBM Plex Sans KR', size: 12 } } }
           },
           animation: { duration: 0 }
         }
@@ -550,189 +555,73 @@ export class UIManager {
     this.renderActivityLog();
   }
   
-  renderBuildingSwiper() {
-    const container = document.getElementById('building-slides');
-    if (!container) return;
+  // ─── Entity browsers (buildings / research / shipyard) ──────────────────────
+  // Method names are kept from the former swiper carousels; many callers use them.
 
-    const activeIndex = this.buildingSwiper?.activeIndex ?? 0;
-    
-    container.innerHTML = '';
-    const buildings = Object.values(GameData.BUILDINGS).filter(b => b.category === this.currentCategory);
-    
-    buildings.forEach(building => {
-      const level = gameState.getBuildingLevel(building.id);
-      const cost = GameData.calculateBuildingCost(building.id, level + 1);
-      const canAfford = gameState.hasResources(cost);
-      const hasTech = gameState.hasTechRequirements(building.requirements);
-      
-      const slide = document.createElement('div');
-      slide.className = 'swiper-slide';
-      
-      let costHtml = '';
-      for (const [res, amount] of Object.entries(cost)) {
-        const hasEnough = gameState.resources[res] >= amount;
-        costHtml += '<span class="cost-tag ' + (hasEnough ? '' : 'insufficient') + '">';
-        costHtml += (GameData.RESOURCES[res]?.icon || '') + ' ' + GameData.formatNumber(amount);
-        costHtml += '</span>';
-      }
-      
-      // Calculate build time
-      const baseTime = building.buildTime || 60;
-      const robotBonus = gameState.buildings.robotFactory > 0 ? Math.pow(0.9, gameState.buildings.robotFactory) : 1;
-      const naniteBonus = gameState.buildings.naniteFactory > 0 ? Math.pow(0.5, gameState.buildings.naniteFactory) : 1;
-      const buildTime = Math.floor(baseTime * Math.pow(1.5, level) * robotBonus * naniteBonus);
-      
-      slide.innerHTML = '<div class="holo-slide-card ' + (!canAfford || !hasTech ? 'disabled' : '') + '">' +
-        '<div class="slide-icon">' + building.icon + '</div>' +
-        '<h3 class="slide-title">' + building.name + '</h3>' +
-        '<div class="slide-level">LEVEL ' + level + '</div>' +
-        '<p class="slide-desc">' + building.description + '</p>' +
-        '<div class="build-time">' + this.formatBuildTime(buildTime) + '</div>' +
-        '<div class="slide-costs">' + costHtml + '</div>' +
-        '<button class="holo-action-btn" data-building="' + building.id + '" ' + (!canAfford || !hasTech ? 'disabled' : '') + '>' +
-        (!hasTech ? 'LOCKED' : !canAfford ? 'NO RESOURCES' : 'CONSTRUCT') +
-        '</button></div>';
-      
-      const btn = slide.querySelector('.holo-action-btn');
-      if (canAfford && hasTech) {
-        btn.addEventListener('click', () => this.startConstruction(building.id));
-      }
-      
-      container.appendChild(slide);
-    });
-    
-    if (this.buildingSwiper) this.buildingSwiper.destroy();
-    this.buildingSwiper = new Swiper('.building-swiper', {
-      slidesPerView: 'auto',
-      spaceBetween: 20,
-      grabCursor: true,
-      pagination: { el: '.swiper-pagination', clickable: true },
-      navigation: { prevEl: '.swiper-button-prev', nextEl: '.swiper-button-next' }
-    });
-    this.buildingSwiper.slideTo(activeIndex, 0);
+  categoryTabs(type) {
+    const categories = catalog.categories(type);
+    if (categories.length < 2) return [{ key: type, label: TYPE_LABELS[type].title, type }];
+    return categories.map((category) => ({
+      key: `${type}:${category}`,
+      label: CATEGORY_LABELS[category] || category,
+      type,
+      category
+    }));
   }
-  
+
+  getBrowser(view) {
+    if (this.browsers[view]) return this.browsers[view];
+    const root = document.getElementById(`${view}-browser`);
+    if (!root) return null;
+
+    const isActive = (type) => (entity) => this.queueItems[type]?.itemId === entity.id
+      || this.lastPendingQueue.some((item) => item.type === type && item.itemId === entity.id);
+    const configs = {
+      buildings: {
+        tabs: () => this.categoryTabs('building'),
+        isInProgress: isActive('building'),
+        onCommand: (entity) => this.startConstruction(entity.id)
+      },
+      research: {
+        tabs: () => [{ key: 'research:all', label: '전체', type: 'research' }, ...this.categoryTabs('research')
+          .filter((tab) => tab.category)],
+        isInProgress: isActive('research'),
+        onCommand: (entity) => this.startResearch(entity.id)
+      },
+      shipyard: {
+        tabs: () => [...this.categoryTabs('ship'), { key: 'defense', label: CATEGORY_LABELS.defense, type: 'defense' }],
+        isInProgress: () => false,
+        onCommand: (entity, count) => this.buildShip(entity.id, count, entity.type),
+        showModel: true
+      }
+    };
+
+    this.browsers[view] = new EntityBrowser({ root, getState: () => gameState, ...configs[view] });
+    return this.browsers[view];
+  }
+
+  renderBuildingSwiper() {
+    this.getBrowser('buildings')?.render();
+  }
+
   renderResearchSwiper() {
-    const container = document.getElementById('research-slides');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    const researches = Object.values(GameData.RESEARCH);
-    
-    researches.forEach(research => {
-      const level = gameState.getResearchLevel(research.id);
-      const cost = GameData.calculateResearchCost(research.id, level);
-      const canAfford = gameState.hasResources(cost);
-      const hasTech = gameState.hasTechRequirements(research.requirements);
-      const hasLab = gameState.buildings.researchLab > 0;
-      
-      const slide = document.createElement('div');
-      slide.className = 'swiper-slide';
-      
-      let costHtml = '';
-      for (const [res, amount] of Object.entries(cost)) {
-        const hasEnough = gameState.resources[res] >= amount;
-        costHtml += '<span class="cost-tag ' + (hasEnough ? '' : 'insufficient') + '">';
-        costHtml += (GameData.RESOURCES[res]?.icon || '⚡') + ' ' + GameData.formatNumber(amount);
-        costHtml += '</span>';
-      }
-      
-      // Calculate research time
-      const baseTime = research.researchTime || 60;
-      const labLevel = gameState.buildings.researchLab || 1;
-      const researchTime = Math.floor(baseTime * Math.pow(1.5, level) / (1 + labLevel * 0.1));
-      
-      slide.innerHTML = '<div class="holo-slide-card ' + (!canAfford || !hasTech || !hasLab ? 'disabled' : '') + '">' +
-        '<div class="slide-icon">' + research.icon + '</div>' +
-        '<h3 class="slide-title">' + research.name + '</h3>' +
-        '<div class="slide-level">LEVEL ' + level + '</div>' +
-        '<p class="slide-desc">' + research.description + '</p>' +
-        '<div class="build-time">' + this.formatBuildTime(researchTime) + '</div>' +
-        '<div class="slide-costs">' + costHtml + '</div>' +
-        '<button class="holo-action-btn" data-research="' + research.id + '" ' + (!canAfford || !hasTech || !hasLab ? 'disabled' : '') + '>' +
-        (!hasLab ? 'NO LAB' : !hasTech ? 'LOCKED' : !canAfford ? 'NO RESOURCES' : 'RESEARCH') +
-        '</button></div>';
-      
-      const btn = slide.querySelector('.holo-action-btn');
-      if (canAfford && hasTech && hasLab) {
-        btn.addEventListener('click', () => this.startResearch(research.id));
-      }
-      
-      container.appendChild(slide);
-    });
-    
-    if (this.researchSwiper) this.researchSwiper.destroy();
-    this.researchSwiper = new Swiper('.research-swiper', {
-      slidesPerView: 'auto',
-      spaceBetween: 20,
-      grabCursor: true,
-      pagination: { el: '.swiper-pagination', clickable: true },
-      navigation: { prevEl: '.swiper-button-prev', nextEl: '.swiper-button-next' }
-    });
+    this.getBrowser('research')?.render();
   }
-  
+
   renderShipyardSwiper() {
-    const container = document.getElementById('shipyard-slides');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    const ships = Object.values(GameData.SHIPS).filter(s => s.type === this.currentShipType);
-    const hasShipyard = gameState.buildings.shipyard > 0;
-    
-    ships.forEach(ship => {
-      const owned = gameState.fleet[ship.id] || 0;
-      const cost = ship.cost;
-      const canAfford = gameState.hasResources(cost);
-      const hasTech = gameState.hasTechRequirements(ship.techRequirements);
-      
-      const slide = document.createElement('div');
-      slide.className = 'swiper-slide';
-      
-      let costHtml = '';
-      for (const [res, amount] of Object.entries(cost)) {
-        const hasEnough = gameState.resources[res] >= amount;
-        costHtml += '<span class="cost-tag ' + (hasEnough ? '' : 'insufficient') + '">';
-        costHtml += (GameData.RESOURCES[res]?.icon || '') + ' ' + GameData.formatNumber(amount);
-        costHtml += '</span>';
-      }
-      
-      // Calculate build time
-      const shipyardLevel = gameState.buildings.shipyard || 1;
-      const naniteBonus = gameState.buildings.naniteFactory > 0 ? Math.pow(0.5, gameState.buildings.naniteFactory) : 1;
-      const buildTime = Math.floor((ship.buildTime || 60) / (1 + shipyardLevel * 0.1) * naniteBonus);
-      
-      slide.innerHTML = '<div class="holo-slide-card ' + (!canAfford || !hasTech || !hasShipyard ? 'disabled' : '') + '">' +
-        '<div class="slide-icon">' + ship.icon + '</div>' +
-        '<h3 class="slide-title">' + ship.name + '</h3>' +
-        '<div class="slide-level">OWNED: ' + owned + '</div>' +
-        '<p class="slide-desc">' + ship.description + '</p>' +
-        '<div style="display:flex;gap:10px;margin:10px 0;font-size:0.75rem;color:rgba(255,255,255,0.6);">' +
-        '<span>ATK:' + ship.stats.attack + '</span>' +
-        '<span>DEF:' + ship.stats.shield + '</span>' +
-        '<span>HP:' + GameData.formatNumber(ship.stats.hull) + '</span>' +
-        '</div>' +
-        '<div class="build-time">' + this.formatBuildTime(buildTime) + '</div>' +
-        '<div class="slide-costs">' + costHtml + '</div>' +
-        '<button class="holo-action-btn" data-ship="' + ship.id + '" ' + (!canAfford || !hasTech || !hasShipyard ? 'disabled' : '') + '>' +
-        (!hasShipyard ? 'NO SHIPYARD' : !hasTech ? 'LOCKED' : !canAfford ? 'NO RESOURCES' : 'BUILD') +
-        '</button></div>';
-      
-      const btn = slide.querySelector('.holo-action-btn');
-      if (canAfford && hasTech && hasShipyard) {
-        btn.addEventListener('click', () => this.buildShip(ship.id));
-      }
-      
-      container.appendChild(slide);
-    });
-    
-    if (this.shipyardSwiper) this.shipyardSwiper.destroy();
-    this.shipyardSwiper = new Swiper('.shipyard-swiper', {
-      slidesPerView: 'auto',
-      spaceBetween: 20,
-      grabCursor: true,
-      pagination: { el: '.swiper-pagination', clickable: true },
-      navigation: { prevEl: '.swiper-button-prev', nextEl: '.swiper-button-next' }
-    });
+    this.getBrowser('shipyard')?.render();
+  }
+
+  /** Keep affordability / status fresh while a browser is on screen. */
+  startBrowserRefresh() {
+    if (this.browserRefreshTimer) return;
+    const viewToBrowser = { buildings: 'buildings', research: 'research', shipyard: 'shipyard' };
+    this.browserRefreshTimer = setInterval(() => {
+      const view = viewToBrowser[this.currentView];
+      if (!view || document.hidden) return;
+      if (document.activeElement?.closest?.('.entity-browser .unit-count')) return;
+      this.browsers[view]?.render();
+    }, BROWSER_REFRESH_MS);
   }
   
   async startConstruction(buildingId) {
@@ -742,11 +631,11 @@ export class UIManager {
         gameState.syncFromServer(result.snapshot);
         this.hydrateQueueState(result.snapshot.queueState);
       }
-      this.showNotification('Construction Queued', `${result.queueItem.name} Level ${result.queueItem.level}`, 'success');
-      if (this.spaceScene) this.spaceScene.createLaser(new THREE.Vector3(5, 5, 5), new THREE.Vector3(0, 0, 3), 0x00f5ff);
+      this.showNotification('건설 명령', `${result.queueItem.name} Lv ${result.queueItem.level}`, 'success');
+      this.addActivityLog(`건설 명령 — ${result.queueItem.name} Lv ${result.queueItem.level}`);
       this.renderBuildingSwiper();
     } catch (err) {
-      this.showNotification('Error', err.message, 'error');
+      this.showNotification('명령 실패', err.message, 'error');
     }
   }
   
@@ -757,304 +646,246 @@ export class UIManager {
         gameState.syncFromServer(result.snapshot);
         this.hydrateQueueState(result.snapshot.queueState);
       }
-      this.showNotification('Research Queued', `${result.queueItem.name} Level ${result.queueItem.level}`, 'success');
-      if (this.spaceScene) this.spaceScene.createLaser(new THREE.Vector3(-5, 5, 5), new THREE.Vector3(0, 0, 3), 0xa855f7);
+      this.showNotification('연구 개시', `${result.queueItem.name} Lv ${result.queueItem.level}`, 'success');
+      this.addActivityLog(`연구 개시 — ${result.queueItem.name} Lv ${result.queueItem.level}`);
       this.renderResearchSwiper();
     } catch (err) {
-      this.showNotification('Error', err.message, 'error');
+      this.showNotification('명령 실패', err.message, 'error');
     }
   }
   
-  async buildShip(shipId) {
+  async buildShip(shipId, count = 1, entityType = 'ship') {
     try {
-      const result = await apiService.buildShip(shipId);
+      const result = await apiService.buildShip(shipId, count, '0', entityType);
       if (result.snapshot) {
         gameState.syncFromServer(result.snapshot);
         this.hydrateQueueState(result.snapshot.queueState);
       }
-      this.showNotification('Ship Queued', `${result.queueItem.name}`, 'success');
+      const label = entityType === 'defense' ? '배치 명령' : '건조 명령';
+      this.showNotification(label, `${result.queueItem.name} ×${result.queueItem.count || count}`, 'success');
+      this.addActivityLog(`${label} — ${result.queueItem.name} ×${result.queueItem.count || count}`);
       this.renderShipyardSwiper();
     } catch (err) {
-      this.showNotification('Error', err.message, 'error');
+      this.showNotification('명령 실패', err.message, 'error');
     }
   }
   
   formatBuildTime(seconds) {
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+    return formatDuration(seconds);
   }
   
-  async renderGalaxy() {
-    const container = document.getElementById('galaxy-holo');
-    if (!container) return;
-    
-    container.replaceChildren();
-    const galaxy = gameState.planet.galaxy;
-    const system = gameState.planet.system;
-
-    try {
-      const galaxyData = await apiService.getGalaxySystem(galaxy, system);
-
-      for (const position of galaxyData.positions) {
-        const slot = document.createElement('button');
-        slot.type = 'button';
-        slot.className = 'galaxy-slot';
-        slot.classList.toggle('own', position.owner === 'self');
-        slot.classList.toggle('occupied', position.occupied);
-
-        const number = document.createElement('span');
-        number.className = 'slot-number';
-        number.textContent = String(position.position);
-        slot.appendChild(number);
-
-        if (position.planet) {
-          const label = document.createElement('span');
-          label.className = 'slot-owner';
-          label.textContent = position.owner === 'self'
-            ? position.planet.name
-            : position.planet.username;
-          slot.appendChild(label);
-        }
-
-        slot.addEventListener('click', () => {
-          const coordinates = `[${galaxyData.galaxy}:${galaxyData.system}:${position.position}]`;
-          if (position.owner === 'other') {
-            this.pendingFleetTarget = {
-              galaxy: galaxyData.galaxy,
-              system: galaxyData.system,
-              planet: position.position
-            };
-            this.switchView('fleet');
-            this.showNotification('Target selected', `${coordinates} is ready for a transport mission.`, 'success');
-            return;
-          }
-          const message = position.occupied
-            ? `${coordinates} ${position.owner === 'self' ? 'is your planet.' : 'is occupied.'}`
-            : `${coordinates} is unoccupied.`;
-          this.showNotification('Galaxy Scan', message, position.occupied ? 'success' : 'info');
-        });
-
-        container.appendChild(slot);
-      }
-    } catch (error) {
-      const state = document.createElement('div');
-      state.className = 'galaxy-state error';
-      state.textContent = `Unable to load galaxy data: ${error.message}`;
-      container.appendChild(state);
+  getScoutController() {
+    this.scouts ??= new ScoutController({api:apiService,state:gameState,notify:(...args)=>this.showNotification(...args),onChange:()=>this.updateScoutUI()});
+    return this.scouts;
+  }
+  updateScoutUI() {
+    if (!this.scouts || !apiService.isAuthenticated()) return;
+    if (this.galaxyView?.scoutEl) {
+      this.galaxyScoutView ??= new ScoutReportsView(this.galaxyView.scoutEl,{controller:this.scouts,state:gameState,onNavigate:view=>this.switchView(view),onMissions:()=>this.switchView('combat')});
+      const position=this.galaxyView.data?.positions.find(p=>p.position===this.galaxyView.selected);
+      if(position)this.galaxyScoutView.render(position);
     }
+    const root=document.getElementById('scout-reports-content');
+    if(root){this.scoutHistoryView ??= new ScoutReportsView(root,{controller:this.scouts,state:gameState,onNavigate:view=>this.switchView(view),onMissions:()=>this.switchView('combat')});this.scoutHistoryView.render();}
+  }
+  renderGalaxy() {
+    const root = document.getElementById('galaxy-holo');
+    if (!root) return;
+    this.galaxyView ??= new GalaxyView({
+      root,
+      controls: {
+        prev: document.getElementById('galaxy-prev'),
+        next: document.getElementById('galaxy-next'),
+        galaxy: document.getElementById('galaxy-input'),
+        system: document.getElementById('system-input'),
+        home: document.getElementById('galaxy-home')
+      },
+      onSelect: (position, coords) => {
+        const scouts=this.getScoutController();
+        void scouts.selectTarget({...coords,planet:position.position});
+        this.updateScoutUI();
+      },
+      fetchSystem: (galaxy, system) => apiService.getGalaxySystem(galaxy, system),
+      getHome: () => ({ galaxy: gameState.planet.galaxy, system: gameState.planet.system }),
+      onTarget: (target) => {
+        this.pendingFleetTarget = target;
+        this.switchView('combat');
+        this.showNotification('작전 목표 지정', `[${target.galaxy}:${target.system}:${target.planet}] 를 함대 작전 목표로 지정했습니다.`, 'success');
+      }
+    });
+    this.galaxyView.show();
   }
   
   renderFleet() {
-    const container = document.getElementById('fleet-grid');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    const ships = Object.entries(gameState.fleet).filter(([_, count]) => count > 0);
-    
-    if (ships.length === 0) {
-      container.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.5);padding:40px;">No ships in fleet</div>';
-      return;
-    }
-    
-    ships.forEach(([shipId, count]) => {
-      const ship = GameData.SHIPS[shipId];
-      const card = document.createElement('div');
-      card.className = 'holo-card';
-      card.style.display = 'flex';
-      card.style.alignItems = 'center';
-      card.style.gap = '15px';
-      card.innerHTML = '<div style="font-size:2rem;">' + (ship?.icon || '🚀') + '</div>' +
-        '<div><h4 style="color:#fff;margin-bottom:4px;">' + (ship?.name || shipId) + '</h4>' +
-        '<span style="color:var(--holo-cyan);font-family:Orbitron;font-size:1.2rem;">' + count + ' UNITS</span></div>';
-      container.appendChild(card);
+    const root = document.getElementById('formation-view');
+    if (!root || !catalog.loaded) return;
+    this.formationView ??= new FleetFormationView(root, {
+      getState: () => gameState,
+      create: () => this.formationMutation(() => apiService.createFormation(gameState.planet.id)),
+      save: (id,input) => this.formationMutation(() => apiService.saveFormation(id,input)),
+      remove: (id,revision) => this.formationMutation(() => apiService.deleteFormation(id,revision)),
+      onCombat: () => this.switchView('combat')
     });
-
-    const composer = document.createElement('form');
-    composer.className = 'holo-card fleet-composer';
-    composer.style.display = 'grid';
-    composer.style.gap = '12px';
-    composer.style.padding = '20px';
-    composer.style.gridColumn = '1 / -1';
-
-    const title = document.createElement('h3');
-    title.textContent = 'FLEET MISSION';
-    composer.appendChild(title);
-
-    const missionField = document.createElement('label');
-    missionField.textContent = 'Mission';
-    const missionSelect = document.createElement('select');
-    missionSelect.name = 'mission';
-    for (const [value, label] of [['transport', 'Transport'], ['attack', 'Attack']]) {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = label;
-      missionSelect.appendChild(option);
-    }
-    missionField.appendChild(missionSelect);
-    composer.appendChild(missionField);
-
-    const target = this.pendingFleetTarget || {};
-    const coordinateFields = [
-      ['galaxy', 'Galaxy', target.galaxy ?? gameState.planet.galaxy],
-      ['system', 'System', target.system ?? gameState.planet.system],
-      ['planet', 'Planet', target.planet ?? '']
-    ];
-    const coordinates = document.createElement('div');
-    coordinates.style.display = 'grid';
-    coordinates.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
-    coordinates.style.gap = '8px';
-    for (const [name, label, value] of coordinateFields) {
-      const field = this.createFleetNumberField(name, label, value, 1);
-      field.input.dataset.coordinate = name;
-      coordinates.appendChild(field.wrapper);
-    }
-    composer.appendChild(coordinates);
-
-    const fleetTitle = document.createElement('strong');
-    fleetTitle.textContent = 'Ships to send';
-    composer.appendChild(fleetTitle);
-    const fleetFields = document.createElement('div');
-    fleetFields.style.display = 'grid';
-    fleetFields.style.gridTemplateColumns = 'repeat(auto-fit, minmax(130px, 1fr))';
-    fleetFields.style.gap = '8px';
-    for (const [shipId, available] of ships) {
-      const field = this.createFleetNumberField(`fleet-${shipId}`, GameData.SHIPS[shipId]?.name || shipId, 0, 0, available);
-      field.input.dataset.ship = shipId;
-      fleetFields.appendChild(field.wrapper);
-    }
-    composer.appendChild(fleetFields);
-
-    const cargoTitle = document.createElement('strong');
-    cargoTitle.textContent = 'Cargo';
-    composer.appendChild(cargoTitle);
-    const cargoFields = document.createElement('div');
-    cargoFields.style.display = 'grid';
-    cargoFields.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
-    cargoFields.style.gap = '8px';
-    for (const resource of ['metal', 'crystal', 'deuterium']) {
-      const field = this.createFleetNumberField(`cargo-${resource}`, resource.toUpperCase(), 0, 0, Math.floor(gameState.resources[resource] || 0));
-      field.input.dataset.cargo = resource;
-      cargoFields.appendChild(field.wrapper);
-    }
-    composer.appendChild(cargoFields);
-
-    const launchButton = document.createElement('button');
-    launchButton.type = 'submit';
-    launchButton.className = 'holo-action-btn';
-    launchButton.textContent = 'LAUNCH MISSION';
-    composer.appendChild(launchButton);
-
-    composer.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const fleet = Object.fromEntries(
-        [...composer.querySelectorAll('[data-ship]')]
-          .map((input) => [input.dataset.ship, Number(input.value)])
-          .filter(([, amount]) => Number.isSafeInteger(amount) && amount > 0)
-      );
-      const cargo = Object.fromEntries(
-        [...composer.querySelectorAll('[data-cargo]')]
-          .map((input) => [input.dataset.cargo, Number(input.value)])
-      );
-      const destination = Object.fromEntries(
-        [...composer.querySelectorAll('[data-coordinate]')]
-          .map((input) => [input.dataset.coordinate, Number(input.value)])
-      );
-
-      launchButton.disabled = true;
-      try {
-        const result = await apiService.launchFleet({
-          mission: missionSelect.value,
-          fleet,
-          cargo,
-          destination
-        });
-        gameState.syncFromServer(result.snapshot);
-        this.pendingFleetTarget = null;
-        this.showNotification('Fleet launched', `${result.fleet.mission} arrives at ${new Date(result.fleet.arrivalTime).toLocaleTimeString()}.`, 'success');
-        this.renderFleet();
-      } catch (error) {
-        this.showNotification('Mission failed', error.message, 'error');
-      } finally {
-        launchButton.disabled = false;
-      }
-    });
-
-    container.appendChild(composer);
-    this.renderFleetMovements(container);
+    this.formationView.render();
+    this.renderStrikeMap();
+    this.renderCombatMissions();
   }
 
-  async renderFleetMovements(container) {
-    const section = document.createElement('section');
-    section.className = 'holo-card fleet-movements';
-    section.style.gridColumn = '1 / -1';
-    section.style.padding = '20px';
-
-    const title = document.createElement('h3');
-    title.textContent = 'ACTIVE FLEET MOVEMENTS';
-    section.appendChild(title);
-
-    const content = document.createElement('div');
-    content.textContent = 'Loading fleet movements…';
-    section.appendChild(content);
-    container.appendChild(section);
-
+  async formationMutation(action) {
     try {
-      const [{ fleets }, { reports }] = await Promise.all([
-        apiService.getFleetMovements(),
-        apiService.getBattleReports()
-      ]);
-      content.replaceChildren();
-
-      if (fleets.length === 0) {
-        const emptyMovements = document.createElement('div');
-        emptyMovements.textContent = 'No fleet movements are active.';
-        content.appendChild(emptyMovements);
-      } else {
-        for (const fleet of fleets) {
-          const row = document.createElement('div');
-          row.style.display = 'flex';
-          row.style.justifyContent = 'space-between';
-          row.style.gap = '12px';
-          row.style.padding = '8px 0';
-
-          const route = document.createElement('span');
-          route.textContent = `${fleet.mission.toUpperCase()} ${fleet.status} · [${fleet.origin.galaxy}:${fleet.origin.system}:${fleet.origin.planet}] → [${fleet.destination.galaxy}:${fleet.destination.system}:${fleet.destination.planet}]`;
-          const eta = document.createElement('span');
-          eta.textContent = `${fleet.remaining}s`;
-          row.append(route, eta);
-          content.appendChild(row);
-        }
-      }
-
-      const reportTitle = document.createElement('h4');
-      reportTitle.textContent = 'BATTLE REPORTS';
-      reportTitle.style.marginTop = '20px';
-      content.appendChild(reportTitle);
-
-      if (reports.length === 0) {
-        const emptyReports = document.createElement('div');
-        emptyReports.textContent = 'No battle reports yet.';
-        content.appendChild(emptyReports);
-      } else {
-        for (const report of reports.slice(0, 10)) {
-          const reportRow = document.createElement('div');
-          reportRow.style.padding = '8px 0';
-          const winner = report.result?.winner || 'draw';
-          const loot = report.result?.loot || {};
-          reportRow.textContent = `${new Date(report.battleTime).toLocaleString()} · ${winner.toUpperCase()} · Loot M:${loot.metal || 0} C:${loot.crystal || 0} D:${loot.deuterium || 0}`;
-          content.appendChild(reportRow);
-        }
-      }
+      const result = await action();
+      if (result.snapshot) gameState.syncFromServer(result.snapshot);
+      this.refreshSyncedViews();
+      return result;
     } catch (error) {
-      content.textContent = `Unable to load fleet movements: ${error.message}`;
+      await this.syncMilitaryState();
+      throw error;
+    }
+  }
+
+  pendingOrders() {
+    const key = `oogame.pendingFleet.${gameState.userId}`;
+    if (this.pendingKey !== key) {
+      this.pendingKey = key;
+      try { this.pendingFleetOrders = JSON.parse(sessionStorage.getItem(key) || '{}'); } catch { this.pendingFleetOrders = {}; }
+    }
+    return this.pendingFleetOrders;
+  }
+  persistPending() { sessionStorage.setItem(this.pendingKey,JSON.stringify(this.pendingFleetOrders)); }
+  async launchFleetOrder(input) {
+    const order = {...input,requestId: input.requestId || crypto.randomUUID()};
+    const pending = this.pendingOrders();
+    pending[order.formationId] = order;
+    this.persistPending();
+    this.renderFleet();
+    try {
+      const result = await apiService.launchFleet(order);
+      delete pending[order.formationId];this.persistPending();
+      if (result.snapshot) gameState.syncFromServer(result.snapshot);
+      else await this.syncMilitaryState();
+      this.pendingFleetTarget = null;
+      this.refreshSyncedViews();
+      this.showNotification('함대 출격', `${result.fleet.formationName} · ${order.mission === 'attack' ? '공격' : '수송'} 임무를 시작했습니다.`, 'success');
+      return result;
+    } catch (error) {
+      if (error.status && error.status < 500) {
+        delete pending[order.formationId];this.persistPending();
+        this.showNotification('출격 실패',error.message,'error');
+        await this.syncMilitaryState();
+      } else {
+        this.showNotification('출격 결과 확인 중','연결이 복구되면 동일 요청으로 결과를 확인합니다.','info');
+      }
+      this.renderFleet();
+      throw error;
+    }
+  }
+  async recoverPendingOrders() {
+    if (this.recoveringOrders) return;
+    const pending=this.pendingOrders();
+    if (!Object.keys(pending).length) return;
+    this.recoveringOrders=true;
+    try {
+      for (const [id,order] of Object.entries(pending)) {
+        const known=gameState.fleetMovements.find(m=>m.requestId===order.requestId);
+        if(known){delete pending[id];continue;}
+        try {await apiService.getFleetRequest(order.requestId);delete pending[id];}
+        catch(error){
+          if(error.status===404) {
+            try {const result=await apiService.launchFleet(order);delete pending[id];if(result.snapshot)gameState.syncFromServer(result.snapshot);}
+            catch(retry){if(retry.status && retry.status<500){delete pending[id];this.showNotification('출격 확인',retry.message,'error');}}
+          }
+        }
+      }
+      this.persistPending();this.renderFleet();
+    } finally {this.recoveringOrders=false;}
+  }
+  async syncMilitaryState() {
+    if (this.militarySyncing || !apiService.isAuthenticated() || !catalog.loaded) return;
+    this.militarySyncing=true;
+    try {
+      const {snapshot}=await apiService.getFleetFormations();
+      const origin=gameState.planet.id;
+      gameState.syncFromServer(snapshot);
+      if(origin && origin!==gameState.planet.id){this.strikeMap?.endDrag();this.strikeMap?.closeConfirm();}
+      this.renderFleet();
+      await this.recoverPendingOrders();
+      await this.getScoutController().refresh();
+    } catch(error) {
+      const status=document.getElementById('military-sync-status');
+      if(status)status.textContent='연결 확인 중 · 표시된 상태가 최신이 아닐 수 있습니다.';
+    } finally {this.militarySyncing=false;}
+  }
+  startMilitarySync() {
+    if(!this.militaryTimer) {
+      this.militaryTimer=setInterval(()=>{
+        if(document.hidden || !['fleet','combat','galaxy'].includes(this.currentView) || !apiService.isAuthenticated())return;
+        this.syncMilitaryState();
+      },8000);
+      document.addEventListener('visibilitychange',()=>{if(!document.hidden && ['fleet','combat','galaxy'].includes(this.currentView))this.syncMilitaryState();});
+      window.addEventListener('focus',()=>{if(['fleet','combat','galaxy'].includes(this.currentView))this.syncMilitaryState();});
+      document.getElementById('fleet-to-combat')?.addEventListener('click',()=>this.switchView('combat'));
+      document.getElementById('manual-combat-target')?.addEventListener('submit',event=>{
+        event.preventDefault();const fields=new FormData(event.target);
+        this.strikeMap.show({galaxy:Number(fields.get('galaxy')),system:Number(fields.get('system'))},{targetSlot:Number(fields.get('planet'))});
+      });
+      document.getElementById('scout-reports')?.addEventListener('toggle',event=>{if(event.target.open)void this.getScoutController().refresh();});
+      if(!this.scoutClock)this.scoutClock=setInterval(()=>{this.galaxyScoutView?.tick();this.scoutHistoryView?.tick();},1000);
+      document.getElementById('combat-reports')?.addEventListener('toggle',async event=>{
+        if(!event.target.open)return;
+        const root=event.target.querySelector('.movement-log');
+        try {const {reports}=await apiService.getBattleReports();root.innerHTML=reports.slice(0,10).map(r=>`<div class="log-row">${escapeHtml(new Date(r.battleTime).toLocaleString('ko-KR'))} · ${{attacker:'공격측 승리',defender:'방어측 승리',draw:'무승부'}[r.result?.winner] || '전투 완료'}</div>`).join('')||'<p>전투 기록이 없습니다.</p>';} catch(error){root.textContent=error.message;}
+      });
+    }
+    if(this.militarySocket?.authToken===apiService.token && this.militarySocket.active)return;
+    this.militarySocket?.disconnect();
+    const socket=io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3000',{transports:['websocket']});
+    socket.authToken=apiService.token;this.militarySocket=socket;
+    socket.on('connect',()=>socket.emit('authenticate',socket.authToken));
+    socket.on('authenticated',()=>this.syncMilitaryState());
+    socket.on('fleetStateChanged',()=>this.syncMilitaryState());
+  }
+
+  renderStrikeMap() {
+    const root=document.getElementById('strike-map');if(!root)return;
+    this.strikeMap ??= new StrikeMap({
+      root,fetchSystem:(galaxy,system)=>apiService.getGalaxySystem(galaxy,system),
+      getHome:()=>({...gameState.planet}),
+      getFormations:()=>gameState.fleetFormations.filter(f=>f.status==='ready'&&String(f.originPlanetId)===String(gameState.planet.id)&&profileOf(f.ships).ships>0),
+      isPending:id=>Boolean(this.pendingOrders()[id]),
+      onManage:()=>this.switchView('fleet'),
+      onLaunch:order=>this.launchFleetOrder(order)
+    });
+    if(this.currentView!=='combat'){this.strikeMap.refresh();return;}
+    const target=this.pendingFleetTarget;
+    if(target && target!==this.strikeTargetShown){this.strikeTargetShown=target;this.strikeMap.show(target,{targetSlot:target.planet});}
+    else if(!this.strikeMap.coords)this.strikeMap.show();
+    else this.strikeMap.refresh();
+  }
+
+  renderCombatMissions() {
+    const root=document.getElementById('combat-missions');if(!root)return;
+    const signature = JSON.stringify(gameState.fleetMovements.map(({remaining, ...movement}) => movement));
+    if (signature === this.missionSignature) { this.tickCombatMissions(); return; }
+    this.missionSignature = signature;
+    root.innerHTML=`<header class="mission-section-heading"><div><p class="fleet-eyebrow">ACTIVE MISSIONS</p><h3>진행 중인 임무 <span>${gameState.fleetMovements.length}</span></h3></div><small id="military-sync-status" role="status">서버 상태 동기화</small></header><div class="mission-card-grid">${gameState.fleetMovements.map(m=>`<article class="mission-card" data-movement="${escapeHtml(m.id)}"><div class="mission-card-top"><div class="mission-ships">${shipImages(m.fleet,2)}</div><div><strong>${escapeHtml(m.formationName || '기존 임무')}</strong><span class="fleet-status">${m.status==='returning'?'귀환 중':'진군 중'}</span></div><b data-mission-countdown></b></div><div class="mission-route"><span>[${m.origin.galaxy}:${m.origin.system}:${m.origin.planet}]</span><span>${m.status==='returning'?'←':'→'}</span><span>[${m.destination.galaxy}:${m.destination.system}:${m.destination.planet}]</span></div><progress max="1" value="0" aria-label="임무 진행률"></progress><div class="mission-card-bottom"><span>${m.mission==='spy'?'정찰':m.mission==='attack'?'공격':'수송'} · ${formatAmount(profileOf(m.fleet).ships)}척</span><small>${m.notice?escapeHtml(m.notice):m.status==='returning'?'귀환 완료 후 다시 출격할 수 있습니다.':'목표 행성으로 이동하고 있습니다.'}</small></div></article>`).join('')||'<div class="mission-empty">아직 진행 중인 임무가 없습니다. 위에서 함대를 선택해 출격하십시오.</div>'}</div>`;
+    fillThumbnails(root);this.tickCombatMissions();
+    if(!this.missionCountdownTimer)this.missionCountdownTimer=setInterval(()=>{if(this.currentView==='combat')this.tickCombatMissions();},1000);
+  }
+  tickCombatMissions() {
+    const now=Date.now()+(gameState.serverOffset || 0);
+    for(const movement of gameState.fleetMovements) {
+      const row=[...document.querySelectorAll('[data-movement]')].find(el=>el.dataset.movement===movement.id);if(!row)continue;
+      const end=new Date(movement.status==='returning'?movement.returnTime:movement.arrivalTime).getTime();
+      const duration=new Date(movement.arrivalTime)-new Date(movement.startTime);
+      const remaining=Math.max(0,Math.ceil((end-now)/1000));
+      row.querySelector('[data-mission-countdown]').textContent=remaining?formatDuration(remaining):'도착 처리 중';
+      row.querySelector('progress').value=duration?Math.min(1,Math.max(0,1-(end-now)/duration)):1;
     }
   }
 
   createFleetNumberField(name, label, value, min, max = '') {
     const wrapper = document.createElement('label');
-    wrapper.style.display = 'grid';
-    wrapper.style.gap = '4px';
+    wrapper.className = 'field';
     wrapper.textContent = label;
 
     const input = document.createElement('input');
@@ -1069,25 +900,45 @@ export class UIManager {
     return { wrapper, input };
   }
   
+  /** Roster card with a rendered 3D thumbnail of the ship. */
+  createShipCard(shipId, count) {
+    const entity = catalog.get('ship', shipId);
+    const item = document.createElement('li');
+    item.className = 'ship-card';
+    const img = document.createElement('img');
+    img.alt = '';
+    const name = document.createElement('span');
+    name.className = 'ship-card-name';
+    name.textContent = entity?.name || shipId;
+    const amount = document.createElement('span');
+    amount.className = 'ship-card-count';
+    amount.textContent = `${count.toLocaleString('ko-KR')}척`;
+    item.append(img, name, amount);
+    if (entity) {
+      getShipThumbnail(resolveModelSpec(entity), shipId)
+        .then((url) => { img.src = url; })
+        .catch((error) => console.warn('[UIManager] thumbnail failed', shipId, error));
+    }
+    return item;
+  }
+
   renderFleetVisual() {
     const totalEl = document.getElementById('total-ships');
     const breakdownEl = document.getElementById('fleet-breakdown');
     if (!totalEl || !breakdownEl) return;
     
-    const total = Object.values(gameState.fleet).reduce((a, b) => a + b, 0);
-    totalEl.textContent = total;
-    
-    const military = Object.entries(gameState.fleet)
-      .filter(([id, count]) => count > 0 && GameData.SHIPS[id]?.type === 'military')
-      .length;
-    const civil = Object.entries(gameState.fleet)
-      .filter(([id, count]) => count > 0 && GameData.SHIPS[id]?.type === 'civil')
-      .length;
-    
-    breakdownEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' +
-      '<div style="display:flex;justify-content:space-between;"><span style="color:rgba(255,255,255,0.5);font-size:0.75rem;">MILITARY</span><span style="color:var(--holo-cyan);">' + military + '</span></div>' +
-      '<div style="display:flex;justify-content:space-between;"><span style="color:rgba(255,255,255,0.5);font-size:0.75rem;">CIVIL</span><span style="color:var(--holo-green);">' + civil + '</span></div>' +
-      '</div>';
+    const owned = Object.entries(gameState.fleet).filter(([, count]) => count > 0);
+    totalEl.textContent = owned.reduce((sum, [, count]) => sum + count, 0).toLocaleString('ko-KR');
+
+    breakdownEl.replaceChildren();
+    if (owned.length === 0) {
+      breakdownEl.innerHTML = '<p class="detail-muted">편성된 함선 없음</p>';
+      return;
+    }
+    const list = document.createElement('ul');
+    list.className = 'roster-list compact';
+    for (const [shipId, count] of owned) list.appendChild(this.createShipCard(shipId, count));
+    breakdownEl.appendChild(list);
   }
   
   updatePlanetInfo() {
@@ -1115,8 +966,12 @@ export class UIManager {
     const container = document.getElementById('activity-log');
     if (!container) return;
     
+    if (this.activityLog.length === 0) {
+      container.innerHTML = '<p class="detail-muted">기록된 사건이 없습니다.</p>';
+      return;
+    }
     container.innerHTML = this.activityLog.map(log => 
-      '<div class="log-entry"><span class="timestamp">[' + log.timestamp + ']</span><span class="message">' + log.message + '</span></div>'
+      '<div class="log-entry"><span class="timestamp">[' + log.timestamp + ']</span><span class="message">' + escapeHtml(log.message) + '</span></div>'
     ).join('');
   }
   
@@ -1254,19 +1109,19 @@ export class UIManager {
       // Update user count badge
       const badge = document.getElementById('user-count-badge');
       if (badge && data.pagination) {
-        badge.textContent = data.pagination.totalUsers || 0;
-        badge.style.display = data.pagination.totalUsers > 0 ? 'inline-flex' : 'none';
+        badge.textContent = data.pagination.total || 0;
+        badge.style.display = data.pagination.total > 0 ? 'inline-flex' : 'none';
       }
       
       // Update showing text
       if (showingEl && data.pagination) {
         const start = (page - 1) * pageSize + 1;
-        const end = Math.min(page * pageSize, data.pagination.totalUsers);
-        showingEl.textContent = `Showing ${start}-${end} of ${data.pagination.totalUsers} users`;
+        const end = Math.min(page * pageSize, data.pagination.total);
+        showingEl.textContent = `Showing ${start}-${end} of ${data.pagination.total} users`;
       }
       
       if (data.users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--holo-cyan);">No users found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-faint);">No users found</td></tr>';
         return;
       }
       
@@ -1278,7 +1133,7 @@ export class UIManager {
         <tr data-user-id="${user._id}">
           <td class="col-username">
             <div class="user-name">${user.username}</div>
-            <div class="user-email" style="font-size:0.75rem;color:rgba(0,245,255,0.5);">${user.email || ''}</div>
+            <div class="user-email">${user.email || ''}</div>
           </td>
           <td class="col-status">
             <span class="user-status ${user.isOnline ? 'online' : 'offline'}">${user.isOnline ? 'ONLINE' : 'OFFLINE'}</span>
@@ -1325,9 +1180,60 @@ export class UIManager {
     return num.toString();
   }
   
-  viewUserDetails(userId) {
-    // TODO: Open user detail modal
-    this.showNotification('Info', 'View user: ' + userId, 'info');
+  escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    })[character]);
+  }
+
+  formatDate(value) {
+    if (!value) return 'Never';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
+  }
+
+  showModal(content) {
+    const modalContent = document.getElementById('modal-content');
+    if (!this.modalOverlay || !modalContent) return;
+
+    modalContent.innerHTML = content;
+    this.modalOverlay.classList.remove('hidden');
+  }
+
+  async viewUserDetails(userId) {
+    try {
+      const user = await adminService.getUser(userId);
+      const planets = user.planets || [];
+      const planetRows = planets.map((planet, index) => {
+        const resources = planet.resources || {};
+        return `<div class="admin-user-planet">
+          <strong>${this.escapeHtml(planet.name || `Planet ${index + 1}`)}</strong>
+          <span>[${planet.galaxy ?? '-'}:${planet.system ?? '-'}:${planet.planet ?? '-'}]</span>
+          <span>⚙️ ${this.formatNumber(resources.metal || 0)} · 💎 ${this.formatNumber(resources.crystal || 0)} · 💧 ${this.formatNumber(resources.deuterium || 0)}</span>
+        </div>`;
+      }).join('') || '<p>No planets found.</p>';
+
+      this.showModal(`<div class="modal-header"><h2>USER DETAILS</h2></div>
+        <div class="modal-body admin-user-modal">
+          <dl class="admin-user-details">
+            <div><dt>Username</dt><dd>${this.escapeHtml(user.username)}</dd></div>
+            <div><dt>Email</dt><dd>${this.escapeHtml(user.email)}</dd></div>
+            <div><dt>Status</dt><dd>${user.isOnline ? 'Online' : 'Offline'}${user.isBanned ? ' · Banned' : ''}</dd></div>
+            <div><dt>Role</dt><dd>${this.escapeHtml(user.adminRole || 'Player')}</dd></div>
+            <div><dt>Rank / Points</dt><dd>${user.rank ?? 0} / ${this.formatNumber(user.points ?? 0)}</dd></div>
+            <div><dt>Joined</dt><dd>${this.formatDate(user.createdAt)}</dd></div>
+            <div><dt>Last login</dt><dd>${this.formatDate(user.lastLogin)}</dd></div>
+          </dl>
+          <h3>PLANETS</h3>
+          <div class="admin-user-planets">${planetRows}</div>
+        </div>`);
+    } catch (err) {
+      this.showNotification('Error', err.message, 'error');
+    }
   }
   
   renderPagination(pagination, currentPage) {
@@ -1335,7 +1241,7 @@ export class UIManager {
     if (!container || !pagination) return;
     
     let html = '';
-    for (let i = 1; i <= pagination.totalPages; i++) {
+    for (let i = 1; i <= pagination.pages; i++) {
       html += `<button class="${i === currentPage ? 'active' : ''}" onclick="window.loadUsersPage(${i})">${i}</button>`;
     }
     container.innerHTML = html;
@@ -1380,8 +1286,75 @@ export class UIManager {
   }
   
   async editUser(userId) {
-    // TODO: Open user edit modal
-    this.showNotification('Info', 'Edit user: ' + userId, 'info');
+    try {
+      const user = await adminService.getUser(userId);
+      const planets = user.planets || [];
+      const selectedPlanet = planets[user.currentPlanet] || planets[0] || { resources: {} };
+      const resources = selectedPlanet.resources || {};
+      const planetResources = planets.map((planet) => planet.resources || {});
+      const planetOptions = planets.map((planet, index) =>
+        `<option value="${index}" ${planet === selectedPlanet ? 'selected' : ''}>${this.escapeHtml(planet.name || `Planet ${index + 1}`)}</option>`
+      ).join('');
+
+      this.showModal(`<div class="modal-header"><h2>EDIT USER: ${this.escapeHtml(user.username)}</h2></div>
+        <form class="modal-body admin-user-modal" id="admin-user-edit-form">
+          <div class="admin-user-toggle-row">
+            <label><input type="checkbox" name="isBanned" ${user.isBanned ? 'checked' : ''}> Ban user</label>
+            <label><input type="checkbox" name="isAdmin" ${user.isAdmin ? 'checked' : ''}> Administrator</label>
+          </div>
+          <div class="form-group"><label for="admin-user-ban-reason">BAN REASON</label>
+            <input id="admin-user-ban-reason" name="banReason" maxlength="500" value="${this.escapeHtml(user.banReason || '')}"></div>
+          <div class="form-group"><label for="admin-user-role">ADMIN ROLE</label>
+            <select id="admin-user-role" name="adminRole">
+              <option value="support" ${user.adminRole === 'support' ? 'selected' : ''}>Support</option>
+              <option value="moderator" ${user.adminRole === 'moderator' ? 'selected' : ''}>Moderator</option>
+              <option value="superadmin" ${user.adminRole === 'superadmin' ? 'selected' : ''}>Superadmin</option>
+            </select></div>
+          <h3>PLANET RESOURCES</h3>
+          <div class="form-group"><label for="admin-user-planet">PLANET</label><select id="admin-user-planet" name="planetIndex">${planetOptions}</select></div>
+          <div class="admin-user-resource-grid">
+            ${['metal', 'crystal', 'deuterium', 'energy'].map((resource) => `<div class="form-group"><label for="admin-user-${resource}">${resource.toUpperCase()}</label><input id="admin-user-${resource}" name="${resource}" type="number" min="0" step="1" value="${Number(resources[resource] || 0)}"></div>`).join('')}
+          </div>
+          <button class="holo-action-btn" type="submit">SAVE USER</button>
+        </form>`);
+
+      const form = document.getElementById('admin-user-edit-form');
+      const planetSelect = document.getElementById('admin-user-planet');
+      planetSelect?.addEventListener('change', () => {
+        const nextResources = planetResources[Number(planetSelect.value)] || {};
+        ['metal', 'crystal', 'deuterium', 'energy'].forEach((resource) => {
+          const input = form?.elements.namedItem(resource);
+          if (input) input.value = Number(nextResources[resource] || 0);
+        });
+      });
+      form?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const formData = new FormData(form);
+        const updatedResources = Object.fromEntries(['metal', 'crystal', 'deuterium', 'energy'].map((resource) => [resource, Number(formData.get(resource))]));
+        if (Object.values(updatedResources).some((value) => !Number.isSafeInteger(value) || value < 0)) {
+          this.showNotification('Error', 'Resources must be non-negative whole numbers.', 'error');
+          return;
+        }
+
+        try {
+          await adminService.updateUser(userId, {
+            isBanned: formData.get('isBanned') === 'on',
+            banReason: String(formData.get('banReason') || '').trim(),
+            isAdmin: formData.get('isAdmin') === 'on',
+            adminRole: formData.get('isAdmin') === 'on' ? formData.get('adminRole') : null,
+            planetIndex: Number(formData.get('planetIndex')),
+            resources: updatedResources
+          });
+          this.hideModal();
+          this.showNotification('Success', 'User updated', 'success');
+          this.loadUsers();
+        } catch (err) {
+          this.showNotification('Error', err.message, 'error');
+        }
+      });
+    } catch (err) {
+      this.showNotification('Error', err.message, 'error');
+    }
   }
   
   async deleteUser(userId) {
@@ -1438,8 +1411,9 @@ export class UIManager {
     const queueSidebarEmpty = document.getElementById('queue-sidebar-empty');
     const queueSidebarList = document.getElementById('queue-list-sidebar');
     
+    const defense = this.queueItems.defense;
     // Count all active + pending items
-    const activeCount = [building, research, ship].filter(Boolean).length;
+    const activeCount = [building, research, ship, defense].filter(Boolean).length;
     const total = activeCount + (pendingQueue?.length || 0);
     
     if (total === 0) {
@@ -1466,7 +1440,7 @@ export class UIManager {
       let timeText = '';
       
       if (isPending || item.status === 'pending') {
-        timeText = `Waiting... (${this.formatBuildTime(item.duration)})`;
+        timeText = `대기 · ${this.formatBuildTime(item.duration)}`;
         percent = 0;
       } else {
         remaining = Math.max(0, Math.ceil((new Date(item.endTime) - Date.now()) / 1000));
@@ -1501,19 +1475,21 @@ export class UIManager {
     let filterType = null;
     if (this.currentView === 'buildings') filterType = 'building';
     else if (this.currentView === 'research') filterType = 'research';
-    else if (this.currentView === 'shipyard') filterType = 'ship';
+    else if (this.currentView === 'shipyard') filterType = ['ship', 'defense'];
+    const matches = (type) => !filterType || filterType === type || (Array.isArray(filterType) && filterType.includes(type));
     
     // Update Sidebars (Global view with conditional filtering)
     let globalHtml = '';
     
     // Add active items if they match filter
-    if (!filterType || filterType === 'building') globalHtml += renderQueueItem(building);
-    if (!filterType || filterType === 'research') globalHtml += renderQueueItem(research);
-    if (!filterType || filterType === 'ship') globalHtml += renderQueueItem(ship);
+    if (matches('building')) globalHtml += renderQueueItem(building);
+    if (matches('research')) globalHtml += renderQueueItem(research);
+    if (matches('ship')) globalHtml += renderQueueItem(ship);
+    if (matches('defense')) globalHtml += renderQueueItem(defense);
     
     // Add pending items if they match filter
     pendingQueue?.forEach(item => {
-      if (!filterType || item.type === filterType) {
+      if (matches(item.type)) {
         globalHtml += renderQueueItem(item, true);
       }
     });
@@ -1524,15 +1500,17 @@ export class UIManager {
     if (queueSidebarList) queueSidebarList.style.display = globalHtml ? 'block' : 'none';
 
     // Update Per-Panel Queues (Filtered view)
-    const renderPanelQueue = (type, containerId) => {
+    const activeByType = { building, research, ship, defense };
+    const renderPanelQueue = (types, containerId) => {
       const container = document.getElementById(containerId);
       if (!container) return;
       
-      const activeItem = type === 'building' ? building : (type === 'research' ? research : ship);
-      const pendingItems = pendingQueue?.filter(item => item.type === type) || [];
+      const pendingItems = pendingQueue?.filter(item => types.includes(item.type)) || [];
       
       let panelHtml = '';
-      if (activeItem) panelHtml += renderQueueItem(activeItem);
+      types.forEach(type => {
+        if (activeByType[type]) panelHtml += renderQueueItem(activeByType[type]);
+      });
       pendingItems.forEach(item => {
         panelHtml += renderQueueItem(item, true);
       });
@@ -1546,9 +1524,9 @@ export class UIManager {
       }
     };
 
-    renderPanelQueue('building', 'buildings-panel-queue');
-    renderPanelQueue('research', 'research-panel-queue');
-    renderPanelQueue('ship', 'shipyard-panel-queue');
+    renderPanelQueue(['building'], 'buildings-panel-queue');
+    renderPanelQueue(['research'], 'research-panel-queue');
+    renderPanelQueue(['ship', 'defense'], 'shipyard-panel-queue');
   }
   
   // Local Countdown Methods (replaces polling)
@@ -1566,7 +1544,7 @@ export class UIManager {
     const now = Date.now();
     
     // Update each active queue type
-    for (const type of ['building', 'research', 'ship']) {
+    for (const type of ['building', 'research', 'ship', 'defense']) {
       const item = this.queueItems[type];
       if (!item || !item.endTime) continue;
       
@@ -1668,7 +1646,7 @@ export class UIManager {
       } else {
         // Not yet complete, update endTime from server
         // Find the queue item by id
-        for (const type of ['building', 'research', 'ship']) {
+        for (const type of ['building', 'research', 'ship', 'defense']) {
           if (this.queueItems[type] && this.queueItems[type].id === queueId) {
             this.queueItems[type].endTime = result.endTime;
             this.queueItems[type].checking = false;
@@ -1679,7 +1657,7 @@ export class UIManager {
     } catch (err) {
       console.error('Failed to check completion:', err);
       // Reset checking flag
-      for (const type of ['building', 'research', 'ship']) {
+      for (const type of ['building', 'research', 'ship', 'defense']) {
         if (this.queueItems[type] && this.queueItems[type].id === queueId) {
           this.queueItems[type].checking = false;
           break;
@@ -1711,7 +1689,9 @@ export class UIManager {
       gameState.recalculateDerivedState();
     }
 
-    this.showNotification('Construction Complete', `${completed.name} completed!`, 'success');
+    const completedLabel = { building: '건설 완료', research: '연구 완료', ship: '건조 완료', defense: '배치 완료' }[completed.type] || '작업 완료';
+    this.showNotification(completedLabel, `${completed.name}${completed.level ? ` Lv ${completed.level}` : ''}${completed.count ? ` ×${completed.count}` : ''}`, 'success');
+    this.addActivityLog(`${completedLabel} — ${completed.name}`);
     
     if (!hasSnapshot && completed.type === 'building' && !completed.buildings) {
       gameState.upgradeBuilding(completed.itemId);
@@ -1719,7 +1699,7 @@ export class UIManager {
     } else if (!hasSnapshot && completed.type === 'research' && !completed.research) {
       gameState.upgradeResearch(completed.itemId);
       this.renderResearchSwiper();
-    } else if (completed.type === 'ship') {
+    } else if (completed.type === 'ship' || completed.type === 'defense') {
       this.renderShipyardSwiper();
       this.renderFleetVisual();
     }
@@ -1787,13 +1767,20 @@ export class UIManager {
     
     const notification = document.createElement('div');
     notification.className = 'holo-notification ' + type;
-    notification.innerHTML = '<div class="title">' + title + '</div><div class="message">' + message + '</div>';
+    notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    const titleEl = document.createElement('div');
+    titleEl.className = 'title';
+    titleEl.textContent = title;
+    const messageEl = document.createElement('div');
+    messageEl.className = 'message';
+    messageEl.textContent = message;
+    notification.append(titleEl, messageEl);
     
     container.appendChild(notification);
+    while (container.children.length > MAX_NOTIFICATIONS) container.firstElementChild.remove();
     
     setTimeout(() => {
-      notification.style.opacity = '0';
-      notification.style.transform = 'translateX(100px)';
+      notification.classList.add('is-leaving');
       setTimeout(() => notification.remove(), 300);
     }, 5000);
   }
@@ -1807,17 +1794,17 @@ export class UIManager {
     this.isLoginMode = isLogin;
     const titleEl = document.querySelector('.auth-form-container h2');
     if (isLogin) {
-      if (titleEl) titleEl.textContent = 'LOGIN';
-      this.authSubmit.textContent = 'LOGIN';
+      if (titleEl) titleEl.textContent = '사령부 접속';
+      this.authSubmit.textContent = '접속';
       this.registerFields.style.display = 'none';
-      this.authToggleText.textContent = "Don't have an account?";
-      this.authToggleBtn.textContent = 'REGISTER';
+      this.authToggleText.textContent = '아직 임관하지 않으셨습니까?';
+      this.authToggleBtn.textContent = '신규 등록';
     } else {
-      if (titleEl) titleEl.textContent = 'REGISTER';
-      this.authSubmit.textContent = 'REGISTER';
+      if (titleEl) titleEl.textContent = '신규 등록';
+      this.authSubmit.textContent = '등록';
       this.registerFields.style.display = 'block';
-      this.authToggleText.textContent = 'Already have an account?';
-      this.authToggleBtn.textContent = 'LOGIN';
+      this.authToggleText.textContent = '이미 계정이 있으십니까?';
+      this.authToggleBtn.textContent = '접속';
     }
   }
   
@@ -1856,7 +1843,7 @@ export class UIManager {
         // 게임 초기화
         this.initializeDashboard();
         
-        this.showNotification('Success', 'Welcome back, Commander!', 'success');
+        this.showNotification('접속 완료', '귀환을 환영합니다, 사령관.', 'success');
         this.updateUserDisplay(data.user);
         
         // Three.js 초기화 (한 번만)
@@ -1890,7 +1877,7 @@ export class UIManager {
         // 게임 초기화
         this.initializeDashboard();
         
-        this.showNotification('Success', 'Account created! Welcome, Commander!', 'success');
+        this.showNotification('임관 완료', '새 사령관의 부임을 환영합니다.', 'success');
         this.updateUserDisplay(data.user);
         
         // Three.js 초기화
@@ -1906,15 +1893,17 @@ export class UIManager {
   }
   
   handleLogout() {
+    if (this.formationView && !this.formationView.guard(() => this.handleLogout())) return;
+    this.militarySocket?.disconnect();
+    this.strikeMap?.endDrag();this.strikeMap?.closeConfirm();
+    if (this.formationView) { this.formationView.dirty = false; this.formationView.selectedId = null; this.formationView.draft = null; this.formationView.signature = null; }
+    this.scouts?.reset();
     apiService.logout();
     localStorage.removeItem('user');
     
     // UI 초기화
     this.userSection.innerHTML = `
-      <button class="holo-btn-small" id="login-btn">
-        <span class="icon">👤</span>
-        <span class="label">LOGIN</span>
-      </button>
+      <button class="holo-btn-small" id="login-btn">로그인</button>
     `;
     document.getElementById('login-btn')?.addEventListener('click', () => this.showLoginScreen());
     
@@ -1925,7 +1914,7 @@ export class UIManager {
     // 로그인 화면으로 전환
     this.showLoginScreen();
     
-    this.showNotification('Info', 'Logged out successfully', 'info');
+    this.showNotification('퇴청', '안전하게 로그아웃되었습니다.', 'info');
   }
   
   async handleAdminSetup(e) {
@@ -1961,10 +1950,11 @@ export class UIManager {
       if (this.adminSetupScreen) this.adminSetupScreen.classList.add('hidden');
       this.showDashboard();
       
-      // 게임 초기화
+      // 서버 데이터/카탈로그 동기화 후 게임 초기화
+      await this.syncUserDataFromServer();
       this.initializeDashboard();
       
-      this.showNotification('Success', 'Admin account created! Welcome, Commander!', 'success');
+      this.showNotification('설정 완료', '관리자 계정이 생성되었습니다.', 'success');
       this.updateUserDisplay(data.user);
       
       // 관리자 버튼 표시

@@ -5,6 +5,7 @@ services:
   mongodb:
     image: mongo:7
     container_name: ogame-mongo
+    command: ["mongod", "--replSet", "oogame", "--bind_ip_all"]
     restart: unless-stopped
     ports:
       - "27017:27017"
@@ -37,7 +38,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
-      - MONGODB_URI=mongodb://mongodb:27017/cosmic_empire
+      - MONGODB_URI=mongodb://mongodb:27017/cosmic_empire?replicaSet=oogame&directConnection=true
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET to a non-default value of at least 32 characters}
       - CLIENT_URL=http://localhost:5173

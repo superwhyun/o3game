@@ -3,506 +3,333 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cosmic Empire 3D - Holographic Interface</title>
+  <meta name="theme-color" content="#06090f" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Cosmic Empire — 은하 제국 사령부</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/src/ui/views.css">
+  <link rel="stylesheet" href="/src/ui/galaxy.css">
+  <link rel="stylesheet" href="/src/ui/strike.css">
+  <link rel="stylesheet" href="/src/ui/fleet-command.css">
+  <link rel="stylesheet" href="/src/ui/admin.css">
   <link rel="stylesheet" href="/src/ui/techtree.css">
 </head>
 <body>
   <!-- 3D Canvas -->
   <div id="canvas-container"></div>
-  
-  <!-- Scanline Overlay -->
-  <div class="scanlines"></div>
-  <div class="vignette"></div>
-  
-  <!-- Holographic Grid -->
-  <div class="holo-grid"></div>
+  <div class="vignette" aria-hidden="true"></div>
 
   <!-- Admin Setup Screen (shown when no admin exists) -->
   <div id="admin-setup-screen" class="auth-screen hidden">
     <div class="auth-container">
-      <div class="auth-logo">
-        <div class="logo-ring"></div>
-        <div class="logo-ring inner"></div>
-        <span class="logo-text">ADMIN</span>
-      </div>
-      <h1 class="auth-title">INITIAL SETUP</h1>
-      <p class="auth-subtitle">Create the first administrator account</p>
-      
+      <div class="auth-emblem" aria-hidden="true">✦</div>
+      <p class="auth-kicker">初期設定 · INITIAL SETUP</p>
+      <h1 class="auth-title">최초 관리자 등록</h1>
+      <p class="auth-subtitle">사령부를 운영할 첫 관리자 계정을 만듭니다.</p>
+
       <div class="auth-form-container">
         <form id="admin-setup-form">
           <div class="form-group">
-            <label>ADMIN USERNAME</label>
-            <input type="text" id="setup-username" placeholder="Enter admin username" autocomplete="username">
+            <label for="setup-username">관리자 아이디</label>
+            <input type="text" id="setup-username" autocomplete="username">
           </div>
           <div class="form-group">
-            <label>EMAIL</label>
-            <input type="email" id="setup-email" placeholder="Enter email" autocomplete="email">
+            <label for="setup-email">이메일</label>
+            <input type="email" id="setup-email" autocomplete="email">
           </div>
           <div class="form-group">
-            <label>PASSWORD</label>
-            <input type="password" id="setup-password" placeholder="Enter password" autocomplete="new-password">
+            <label for="setup-password">비밀번호</label>
+            <input type="password" id="setup-password" autocomplete="new-password">
           </div>
           <div class="form-group">
-            <label>CONFIRM PASSWORD</label>
-            <input type="password" id="setup-confirm-password" placeholder="Confirm password" autocomplete="new-password">
+            <label for="setup-confirm-password">비밀번호 확인</label>
+            <input type="password" id="setup-confirm-password" autocomplete="new-password">
           </div>
-          <button type="submit" class="holo-action-btn auth-btn">CREATE ADMIN</button>
+          <button type="submit" class="cmd-btn primary auth-btn">관리자 생성</button>
         </form>
       </div>
-      
-      <div class="auth-footer">
-        <p>v1.0.0 | First-time Setup</p>
-      </div>
-    </div>
-    
-    <div class="auth-bg-animation">
-      <div class="stars"></div>
-      <div class="planet"></div>
+      <div class="auth-footer"><p>v1.0.0 · First-time Setup</p></div>
     </div>
   </div>
 
   <!-- Login Screen (shown when not authenticated) -->
   <div id="auth-screen" class="auth-screen hidden">
     <div class="auth-container">
-      <div class="auth-logo">
-        <div class="logo-ring"></div>
-        <div class="logo-ring inner"></div>
-        <span class="logo-text">CE-3D</span>
-      </div>
-      <h1 class="auth-title">COSMIC EMPIRE</h1>
-      <p class="auth-subtitle">3D Space Strategy Game</p>
-      
-      <div class="auth-form-container">
-        <h2 id="auth-title">LOGIN</h2>
-        <form id="auth-form">
+      <div class="auth-emblem" aria-hidden="true">✦</div>
+      <p class="auth-kicker">銀河帝國 · COSMIC EMPIRE</p>
+      <h1 class="auth-title">코스믹 엠파이어</h1>
+      <p class="auth-subtitle">은하의 역사가, 또 한 페이지.</p>
 
+      <div class="auth-form-container">
+        <h2 id="auth-title">사령부 접속</h2>
+        <form id="auth-form">
           <div class="form-group">
-            <label>USERNAME</label>
-            <input type="text" id="auth-username" placeholder="Enter username" autocomplete="username">
+            <label for="auth-username">아이디</label>
+            <input type="text" id="auth-username" autocomplete="username">
           </div>
           <div class="form-group">
-            <label>PASSWORD</label>
-            <input type="password" id="auth-password" placeholder="Enter password" autocomplete="current-password">
+            <label for="auth-password">비밀번호</label>
+            <input type="password" id="auth-password" autocomplete="current-password">
           </div>
           <div class="form-group" id="register-fields" style="display:none;">
-            <label>EMAIL</label>
-            <input type="email" id="auth-email-reg" placeholder="Enter email (for password recovery)" autocomplete="email">
-            <label style="margin-top: 10px;">CONFIRM PASSWORD</label>
-            <input type="password" id="auth-confirm-password" placeholder="Confirm password" autocomplete="new-password">
+            <label for="auth-email-reg">이메일 (계정 복구용)</label>
+            <input type="email" id="auth-email-reg" autocomplete="email">
+            <label for="auth-confirm-password">비밀번호 확인</label>
+            <input type="password" id="auth-confirm-password" autocomplete="new-password">
           </div>
-          <button type="submit" class="holo-action-btn auth-btn" id="auth-submit">LOGIN</button>
+          <button type="submit" class="cmd-btn primary auth-btn" id="auth-submit">접속</button>
         </form>
         <div class="auth-toggle">
-          <span id="auth-toggle-text">Don't have an account?</span>
-          <button class="link-btn" id="auth-toggle-btn">REGISTER</button>
+          <span id="auth-toggle-text">아직 임관하지 않으셨습니까?</span>
+          <button class="link-btn" id="auth-toggle-btn">신규 등록</button>
         </div>
       </div>
-      
-      <div class="auth-footer">
-        <p>v1.0.0 | Server: Online</p>
-      </div>
-    </div>
-    
-    <!-- Background Animation -->
-    <div class="auth-bg-animation">
-      <div class="stars"></div>
-      <div class="planet"></div>
+      <div class="auth-footer"><p>v1.0.0 · Server Online</p></div>
     </div>
   </div>
 
   <!-- Main UI Layer (shown when authenticated) -->
   <div id="ui-layer" class="ui-layer hidden">
-    
-    <!-- Top Holographic Header -->
+
     <header class="holo-header">
       <div class="header-left">
-        <div class="logo-holo">
-          <div class="logo-ring"></div>
-          <div class="logo-ring inner"></div>
-          <span class="logo-text">CE-3D</span>
+        <div class="brand">
+          <span class="brand-emblem" aria-hidden="true">✦</span>
+          <span class="brand-name">COSMIC EMPIRE<small>銀河帝國 司令部</small></span>
         </div>
+      </div>
+
+      <div class="holo-resources" aria-label="자원 현황">
+        <div class="resource-cell" data-resource="metal">
+          <span class="resource-name">금속</span>
+          <span class="resource-value" id="metal-count">0</span>
+          <span class="resource-rate" id="metal-rate">+0/h</span>
+          <span class="resource-meter" id="metal-ring" aria-hidden="true"></span>
+          <span class="resource-fill sr-only" id="metal-fill">0.0%</span>
+        </div>
+        <div class="resource-cell" data-resource="crystal">
+          <span class="resource-name">수정</span>
+          <span class="resource-value" id="crystal-count">0</span>
+          <span class="resource-rate" id="crystal-rate">+0/h</span>
+          <span class="resource-meter" id="crystal-ring" aria-hidden="true"></span>
+          <span class="resource-fill sr-only" id="crystal-fill">0.0%</span>
+        </div>
+        <div class="resource-cell" data-resource="deuterium">
+          <span class="resource-name">중수소</span>
+          <span class="resource-value" id="deuterium-count">0</span>
+          <span class="resource-rate" id="deuterium-rate">+0/h</span>
+          <span class="resource-meter" id="deuterium-ring" aria-hidden="true"></span>
+          <span class="resource-fill sr-only" id="deuterium-fill">0.0%</span>
+        </div>
+        <div class="resource-cell energy" data-resource="energy">
+          <span class="resource-name">에너지</span>
+          <span class="resource-value" id="energy-count">0</span>
+          <span class="resource-rate" id="energy-rate">0/0</span>
+          <span class="resource-meter" id="energy-ring" aria-hidden="true"></span>
+        </div>
+      </div>
+
+      <div class="header-right">
         <div class="time-display">
-          <span class="label">SYSTEM TIME</span>
+          <span class="label" id="system-date">宇宙暦</span>
           <span class="value" id="system-time">00:00:00</span>
         </div>
-        <button class="esm-toggle" id="esm-toggle" title="Toggle Energy Saving Mode">
-          <span class="icon">⚡</span>
-          <span class="status-text">PERFORMANCE</span>
-        </button>
-      </div>
-      
-      <!-- Holographic Resource Bars -->
-      <div class="holo-resources">
-        <div class="resource-holo" data-resource="metal">
-          <div class="resource-ring">
-            <svg viewBox="0 0 100 100">
-              <circle class="bg" cx="50" cy="50" r="45"/>
-              <circle class="progress" cx="50" cy="50" r="45" id="metal-ring"/>
-            </svg>
-            <div class="resource-icon">⚙️</div>
-          </div>
-          <div class="resource-data">
-            <span class="resource-name">METAL</span>
-            <span class="resource-value" id="metal-count">0</span>
-            <span class="resource-rate" id="metal-rate">+0/h</span>
-            <span class="resource-fill" id="metal-fill">0.0%</span>
-          </div>
-        </div>
-        
-        <div class="resource-holo" data-resource="crystal">
-          <div class="resource-ring">
-            <svg viewBox="0 0 100 100">
-              <circle class="bg" cx="50" cy="50" r="45"/>
-              <circle class="progress" cx="50" cy="50" r="45" id="crystal-ring"/>
-            </svg>
-            <div class="resource-icon">💎</div>
-          </div>
-          <div class="resource-data">
-            <span class="resource-name">CRYSTAL</span>
-            <span class="resource-value" id="crystal-count">0</span>
-            <span class="resource-rate" id="crystal-rate">+0/h</span>
-            <span class="resource-fill" id="crystal-fill">0.0%</span>
-          </div>
-        </div>
-        
-        <div class="resource-holo" data-resource="deuterium">
-          <div class="resource-ring">
-            <svg viewBox="0 0 100 100">
-              <circle class="bg" cx="50" cy="50" r="45"/>
-              <circle class="progress" cx="50" cy="50" r="45" id="deuterium-ring"/>
-            </svg>
-            <div class="resource-icon">💧</div>
-          </div>
-          <div class="resource-data">
-            <span class="resource-name">DEUT</span>
-            <span class="resource-value" id="deuterium-count">0</span>
-            <span class="resource-rate" id="deuterium-rate">+0/h</span>
-            <span class="resource-fill" id="deuterium-fill">0.0%</span>
-          </div>
-        </div>
-        
-        <div class="resource-holo energy" data-resource="energy">
-          <div class="resource-ring">
-            <svg viewBox="0 0 100 100">
-              <circle class="bg" cx="50" cy="50" r="45"/>
-              <circle class="progress" cx="50" cy="50" r="45" id="energy-ring"/>
-            </svg>
-            <div class="resource-icon">⚡</div>
-          </div>
-          <div class="resource-data">
-            <span class="resource-name">POWER</span>
-            <span class="resource-value" id="energy-count">0</span>
-            <span class="resource-rate" id="energy-rate">0/0</span>
-          </div>
-        </div>
-      </div>
-      
-      <div class="header-right">
         <div class="planet-status">
-          <span class="label">COORDINATES</span>
+          <span class="label">좌표</span>
           <span class="value" id="coords-display">[1:1:1]</span>
         </div>
-        <!-- User Auth Section -->
+        <button class="esm-toggle" id="esm-toggle" title="절전 모드 전환">
+          <span class="icon" aria-hidden="true">◐</span>
+          <span class="status-text">표준</span>
+        </button>
         <div class="user-section" id="user-section">
-          <button class="holo-btn-small" id="login-btn">
-            <span class="icon">👤</span>
-            <span class="label">LOGIN</span>
-          </button>
+          <button class="holo-btn-small" id="login-btn">로그인</button>
         </div>
       </div>
     </header>
 
-    <!-- Left Control Panel - Holographic -->
-    <nav class="holo-sidebar left">
-      <div class="sidebar-glow"></div>
-      
+    <nav class="holo-sidebar left" aria-label="사령부 메뉴">
       <div class="nav-section">
-        <h3 class="section-title">
-          <span class="line"></span>
-          COMMAND
-        </h3>
+        <h3 class="section-title">內政 <span>내정</span></h3>
         <button class="holo-btn active" data-view="dashboard">
-          <div class="btn-glow"></div>
-          <span class="icon">📊</span>
-          <span class="label">대시보드</span>
-          <span class="shortcut">[1]</span>
+          <span class="label">개황</span>
+          <span class="shortcut">1</span>
         </button>
         <button class="holo-btn" data-view="buildings">
-          <div class="btn-glow"></div>
-          <span class="icon">🏗️</span>
           <span class="label">건설</span>
-          <span class="shortcut">[2]</span>
+          <span class="shortcut">2</span>
         </button>
         <button class="holo-btn" data-view="research">
-          <div class="btn-glow"></div>
-          <span class="icon">🔬</span>
           <span class="label">연구</span>
-          <span class="shortcut">[3]</span>
-        </button>
-        <button class="holo-btn" data-view="shipyard">
-          <div class="btn-glow"></div>
-          <span class="icon">🚀</span>
-          <span class="label">함선</span>
-          <span class="shortcut">[4]</span>
+          <span class="shortcut">3</span>
         </button>
       </div>
-      
       <div class="nav-section">
-        <h3 class="section-title">
-          <span class="line"></span>
-          GALAXY
-        </h3>
-        <button class="holo-btn" data-view="galaxy">
-          <div class="btn-glow"></div>
-          <span class="icon">🌌</span>
-          <span class="label">은하 지도</span>
-          <span class="shortcut">[5]</span>
+        <h3 class="section-title">軍事 <span>군사</span></h3>
+        <button class="holo-btn" data-view="shipyard">
+          <span class="label">조병창</span>
+          <span class="shortcut">4</span>
         </button>
         <button class="holo-btn" data-view="fleet">
-          <div class="btn-glow"></div>
-          <span class="icon">✈️</span>
           <span class="label">함대</span>
-          <span class="shortcut">[6]</span>
+          <span class="shortcut">6</span>
+        </button>
+        <button class="holo-btn" data-view="combat"><span class="label">전투</span><span class="shortcut">7</span></button>
+      </div>
+      <div class="nav-section">
+        <h3 class="section-title">情報 <span>정보</span></h3>
+        <button class="holo-btn" data-view="galaxy">
+          <span class="label">성계도</span>
+          <span class="shortcut">5</span>
         </button>
         <button class="holo-btn admin-only hidden" data-view="admin" id="admin-btn">
-          <div class="btn-glow"></div>
-          <span class="icon">⚙️</span>
-          <span class="label">관리자</span>
-          <span class="shortcut">[ADMIN]</span>
+          <span class="label">관리 본부</span>
+          <span class="shortcut">◆</span>
         </button>
       </div>
     </nav>
 
-    <!-- Main Content - Holographic Display -->
     <main class="holo-main">
-      <!-- Dashboard Panel -->
-      <div class="holo-panel active" id="dashboard-panel">
-        <div class="panel-header">
+      <section class="holo-panel active" id="dashboard-panel" aria-labelledby="dashboard-title">
+        <header class="panel-header">
           <div class="panel-title">
-            <span class="indicator"></span>
-            <h2>TACTICAL DASHBOARD</h2>
+            <span class="panel-hanja">概況</span>
+            <h2 id="dashboard-title">제국 개황</h2>
+            <span class="panel-sub">STATE OF THE EMPIRE</span>
           </div>
           <div class="panel-controls">
             <span class="status-dot online"></span>
-            <span>LIVE</span>
+            <span>실시간</span>
           </div>
-        </div>
-        
+        </header>
+
         <div class="dashboard-grid">
-          <!-- Resource Charts -->
-          <div class="holo-card chart-card">
-            <div class="card-header">
-              <h3>RESOURCE FLOW</h3>
-              <span class="live-indicator">● LIVE</span>
-            </div>
-            <div class="chart-container">
-              <canvas id="resource-chart"></canvas>
-            </div>
-          </div>
-          
-          <!-- Production Overview -->
-          <div class="holo-card stats-card">
-            <div class="card-header">
-              <h3>PRODUCTION METRICS</h3>
-            </div>
-            <div class="metrics-grid">
-              <div class="metric">
-                <span class="metric-label">Metal/h</span>
-                <span class="metric-value" id="dash-metal-rate">0</span>
-                <div class="metric-bar">
-                  <div class="fill" id="dash-metal-bar"></div>
-                </div>
-              </div>
-              <div class="metric">
-                <span class="metric-label">Crystal/h</span>
-                <span class="metric-value" id="dash-crystal-rate">0</span>
-                <div class="metric-bar">
-                  <div class="fill" id="dash-crystal-bar"></div>
-                </div>
-              </div>
-              <div class="metric">
-                <span class="metric-label">Deut/h</span>
-                <span class="metric-value" id="dash-deut-rate">0</span>
-                <div class="metric-bar">
-                  <div class="fill" id="dash-deut-bar"></div>
-                </div>
-              </div>
-              <div class="metric">
-                <span class="metric-label">Energy</span>
-                <span class="metric-value" id="dash-energy-rate">0</span>
-                <div class="metric-bar">
-                  <div class="fill" id="dash-energy-bar"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Fleet Status -->
-          <div class="holo-card fleet-card">
-            <div class="card-header">
-              <h3>FLEET STATUS</h3>
-            </div>
-            <div class="fleet-visual" id="fleet-visual">
-              <div class="fleet-ring">
-                <div class="ship-count" id="total-ships">0</div>
-                <span>UNITS</span>
-              </div>
-              <div class="fleet-breakdown" id="fleet-breakdown"></div>
-            </div>
-          </div>
-          
-          <!-- Recent Activity -->
-          <div class="holo-card activity-card">
-            <div class="card-header">
-              <h3>SYSTEM LOG</h3>
-            </div>
+          <article class="holo-card chart-card">
+            <div class="card-header"><h3>자원 추이</h3><span class="live-indicator">LIVE</span></div>
+            <div class="chart-container"><canvas id="resource-chart"></canvas></div>
+          </article>
+
+          <article class="holo-card stats-card">
+            <div class="card-header"><h3>생산 현황</h3><span class="card-unit">시간당</span></div>
+            <dl class="metrics-grid">
+              <div class="metric metal"><dt class="metric-label">금속</dt><dd class="metric-value" id="dash-metal-rate">0</dd><div class="metric-bar"><div class="fill" id="dash-metal-bar"></div></div></div>
+              <div class="metric crystal"><dt class="metric-label">수정</dt><dd class="metric-value" id="dash-crystal-rate">0</dd><div class="metric-bar"><div class="fill" id="dash-crystal-bar"></div></div></div>
+              <div class="metric deuterium"><dt class="metric-label">중수소</dt><dd class="metric-value" id="dash-deut-rate">0</dd><div class="metric-bar"><div class="fill" id="dash-deut-bar"></div></div></div>
+              <div class="metric energy"><dt class="metric-label">에너지 잉여</dt><dd class="metric-value" id="dash-energy-rate">0</dd><div class="metric-bar"><div class="fill" id="dash-energy-bar"></div></div></div>
+            </dl>
+          </article>
+
+          <article class="holo-card fleet-card">
+            <div class="card-header"><h3>함대 전력</h3><span class="card-unit"><b class="ship-count" id="total-ships">0</b> 척</span></div>
+            <div class="fleet-breakdown" id="fleet-breakdown"></div>
+          </article>
+
+          <article class="holo-card activity-card">
+            <div class="card-header"><h3>사령부 일지</h3></div>
             <div class="activity-log" id="activity-log">
-              <div class="log-entry">
-                <span class="timestamp">[SYSTEM]</span>
-                <span class="message">System initialized...</span>
-              </div>
+              <div class="log-entry"><span class="timestamp">[SYSTEM]</span><span class="message">사령부 시스템 기동</span></div>
             </div>
-          </div>
+          </article>
         </div>
-      </div>
+      </section>
 
-      <!-- Buildings Panel with Swiper -->
-      <div class="holo-panel hidden" id="buildings-panel">
-        <div class="panel-header">
+      <section class="holo-panel hidden" id="buildings-panel" aria-labelledby="buildings-title">
+        <header class="panel-header">
           <div class="panel-title">
-            <span class="indicator"></span>
-            <h2>CONSTRUCTION MODULE</h2>
+            <span class="panel-hanja">建設</span>
+            <h2 id="buildings-title">건설</h2>
+            <span class="panel-sub">CONSTRUCTION</span>
           </div>
-          <div class="category-selector">
-            <button class="cat-btn active" data-category="resources">RESOURCES</button>
-            <button class="cat-btn" data-category="facilities">FACILITIES</button>
+        </header>
+        <div class="panel-body">
+          <div id="buildings-browser"></div>
+          <div class="panel-queue-section" id="buildings-queue-section">
+            <div class="panel-queue-title">건설 대기열</div>
+            <div id="buildings-panel-queue" class="panel-queue-list"></div>
           </div>
         </div>
-        
-        <!-- Swiper Container -->
-        <div class="swiper building-swiper">
-          <div class="swiper-wrapper" id="building-slides">
-            <!-- Slides injected by JS -->
-          </div>
-          <div class="swiper-pagination"></div>
-          <div class="swiper-button-prev"></div>
-          <div class="swiper-button-next"></div>
-        </div>
-        
-        <!-- Panel-specific Queue Display -->
-        <div class="panel-queue-section" id="buildings-queue-section">
-          <div class="panel-queue-title">
-            <span class="icon">🏗️</span>
-            건설 대기열
-          </div>
-          <div id="buildings-panel-queue" class="panel-queue-list"></div>
-        </div>
-      </div>
+      </section>
 
-      <!-- Research Panel with Swiper -->
-      <div class="holo-panel hidden" id="research-panel">
-        <div class="panel-header">
+      <section class="holo-panel hidden" id="research-panel" aria-labelledby="research-title">
+        <header class="panel-header">
           <div class="panel-title">
-            <span class="indicator"></span>
-            <h2>RESEARCH LAB</h2>
+            <span class="panel-hanja">硏究</span>
+            <h2 id="research-title">연구</h2>
+            <span class="panel-sub">RESEARCH</span>
+          </div>
+        </header>
+        <div class="panel-body">
+          <div id="research-browser"></div>
+          <div class="panel-queue-section" id="research-queue-section">
+            <div class="panel-queue-title">연구 대기열</div>
+            <div id="research-panel-queue" class="panel-queue-list"></div>
           </div>
         </div>
-        
-        <div class="swiper research-swiper">
-          <div class="swiper-wrapper" id="research-slides"></div>
-          <div class="swiper-pagination"></div>
-          <div class="swiper-button-prev"></div>
-          <div class="swiper-button-next"></div>
-        </div>
+      </section>
 
-        <!-- Panel-specific Queue Display -->
-        <div class="panel-queue-section" id="research-queue-section">
-          <div class="panel-queue-title">
-            <span class="icon">🔬</span>
-            연구 대기열
-          </div>
-          <div id="research-panel-queue" class="panel-queue-list"></div>
-        </div>
-      </div>
-
-      <!-- Shipyard Panel with Swiper -->
-      <div class="holo-panel hidden" id="shipyard-panel">
-        <div class="panel-header">
+      <section class="holo-panel hidden" id="shipyard-panel" aria-labelledby="shipyard-title">
+        <header class="panel-header">
           <div class="panel-title">
-            <span class="indicator"></span>
-            <h2>SHIPYARD</h2>
+            <span class="panel-hanja">造兵</span>
+            <h2 id="shipyard-title">조병창</h2>
+            <span class="panel-sub">SHIPYARD</span>
           </div>
-          <div class="category-selector">
-            <button class="cat-btn active" data-ship-type="civil">CIVIL</button>
-            <button class="cat-btn" data-ship-type="military">MILITARY</button>
+        </header>
+        <div class="panel-body">
+          <div id="shipyard-browser"></div>
+          <div class="panel-queue-section" id="shipyard-queue-section">
+            <div class="panel-queue-title">건조 대기열</div>
+            <div id="shipyard-panel-queue" class="panel-queue-list"></div>
           </div>
         </div>
-        
-        <div class="swiper shipyard-swiper">
-          <div class="swiper-wrapper" id="shipyard-slides"></div>
-          <div class="swiper-pagination"></div>
-          <div class="swiper-button-prev"></div>
-          <div class="swiper-button-next"></div>
-        </div>
+      </section>
 
-        <!-- Panel-specific Queue Display -->
-        <div class="panel-queue-section" id="shipyard-queue-section">
-          <div class="panel-queue-title">
-            <span class="icon">🚀</span>
-            생산 대기열
-          </div>
-          <div id="shipyard-panel-queue" class="panel-queue-list"></div>
-        </div>
-      </div>
-
-      <!-- Galaxy Panel -->
-      <div class="holo-panel hidden" id="galaxy-panel">
-        <div class="panel-header">
+      <section class="holo-panel hidden" id="galaxy-panel" aria-labelledby="galaxy-title">
+        <header class="panel-header">
           <div class="panel-title">
-            <span class="indicator"></span>
-            <h2>GALAXY MAP</h2>
+            <span class="panel-hanja">星系</span>
+            <h2 id="galaxy-title">성계도</h2>
+            <span class="panel-sub">STAR SYSTEM</span>
           </div>
           <div class="galaxy-nav">
-            <button class="nav-arrow" id="galaxy-prev">◀</button>
-            <span class="coords" id="galaxy-coords">[1:1]</span>
-            <button class="nav-arrow" id="galaxy-next">▶</button>
+            <button class="nav-arrow" id="galaxy-prev" aria-label="이전 성계">◀</button>
+            <label class="coord-field"><span>은하</span><input id="galaxy-input" type="number" min="1" max="9" value="1" inputmode="numeric"></label>
+            <span class="coord-sep" aria-hidden="true">:</span>
+            <label class="coord-field"><span>성계</span><input id="system-input" type="number" min="1" max="499" value="1" inputmode="numeric"></label>
+            <button class="nav-arrow" id="galaxy-next" aria-label="다음 성계">▶</button>
+            <button class="holo-btn-small" id="galaxy-home">본거지</button>
           </div>
-        </div>
-        
+        </header>
         <div class="galaxy-container">
           <div class="galaxy-holo" id="galaxy-holo"></div>
         </div>
-      </div>
+      </section>
 
-      <!-- Fleet Panel -->
-      <div class="holo-panel hidden" id="fleet-panel">
-        <div class="panel-header">
-          <div class="panel-title">
-            <span class="indicator"></span>
-            <h2>FLEET COMMAND</h2>
-          </div>
-        </div>
-        
-        <div class="fleet-grid" id="fleet-grid"></div>
-      </div>
+      <section class="holo-panel hidden" id="fleet-panel" aria-labelledby="fleet-title">
+        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">艦隊</span><h2 id="fleet-title">함대 편성</h2><span class="panel-sub">FLEET HANGAR</span></div><button class="holo-btn-small" id="fleet-to-combat">전투 지도 →</button></header>
+        <div class="fleet-scroll"><div id="formation-view"></div></div>
+      </section>
+      <section class="holo-panel hidden" id="combat-panel" aria-labelledby="combat-title">
+        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">戰鬪</span><h2 id="combat-title">전투</h2><span class="panel-sub">TACTICAL OPERATIONS</span></div><span class="panel-sub">편성한 함대를 목표 행성으로</span></header>
+        <div class="fleet-scroll"><section id="strike-map" aria-label="전투 지도"></section><div id="combat-missions"></div><details class="combat-secondary"><summary>좌표로 목표 지정</summary><form id="manual-combat-target"><label class="field">은하<input name="galaxy" type="number" min="1" max="9" value="1" required></label><label class="field">성계<input name="system" type="number" min="1" max="499" value="1" required></label><label class="field">행성<input name="planet" type="number" min="1" max="15" value="1" required></label><button class="cmd-btn" type="submit">목표 확인</button></form></details><details class="combat-secondary" id="scout-reports"><summary>정찰 보고 · 침입 탐지</summary><div id="scout-reports-content" class="scout-report-grid"></div></details><details class="combat-secondary" id="combat-reports"><summary>전투 보고</summary><div class="movement-log"></div></details></div>
+      </section>
 
       <!-- Admin Panel -->
       <div class="holo-panel hidden" id="admin-panel">
-        <div class="panel-header">
+        <header class="panel-header">
           <div class="panel-title">
-            <span class="indicator red"></span>
-            <h2>ADMIN CONTROL CENTER</h2>
+            <span class="panel-hanja">管理</span>
+            <h2>관리 본부</h2>
+            <span class="panel-sub">ADMINISTRATION</span>
           </div>
           <div class="panel-controls">
             <span class="status-dot warning"></span>
-            <span>PRIVILEGED ACCESS</span>
+            <span>권한 접근</span>
           </div>
-        </div>
+        </header>
         
         <!-- Admin Tab Navigation -->
         <div class="admin-tabs">
@@ -826,85 +653,48 @@
       </div>
     </main>
 
-    <!-- Right Info Panel -->
-    <aside class="holo-sidebar right">
-      <div class="sidebar-glow"></div>
-      
+    <aside class="holo-sidebar right" aria-label="행성 정보">
       <div class="info-section">
-        <h3 class="section-title">
-          <span class="line"></span>
-          PLANET DATA
-        </h3>
-        
+        <h3 class="section-title">行星 <span>행성 정보</span></h3>
         <div class="planet-holo">
-          <div class="planet-scan-line"></div>
-          <div class="planet-visual" id="planet-visual"></div>
-          <div class="planet-data">
-            <div class="data-row">
-              <span class="label">NAME</span>
-              <span class="value" id="planet-name">Colony-1</span>
-            </div>
-            <div class="data-row">
-              <span class="label">DIAMETER</span>
-              <span class="value" id="planet-size">12,800km</span>
-            </div>
-            <div class="data-row">
-              <span class="label">TEMP RANGE</span>
-              <span class="value" id="planet-temp">-20°C ~ 40°C</span>
-            </div>
-            <div class="data-row">
-              <span class="label">POSITION</span>
-              <span class="value" id="planet-pos">4</span>
-            </div>
-          </div>
+          <div class="planet-visual" id="planet-visual" aria-hidden="true"></div>
+          <dl class="planet-data">
+            <div class="data-row"><dt class="label">명칭</dt><dd class="value" id="planet-name">Colony-1</dd></div>
+            <div class="data-row"><dt class="label">직경</dt><dd class="value" id="planet-size">12,800km</dd></div>
+            <div class="data-row"><dt class="label">기온</dt><dd class="value" id="planet-temp">-20°C ~ 40°C</dd></div>
+            <div class="data-row"><dt class="label">궤도</dt><dd class="value" id="planet-pos">4</dd></div>
+          </dl>
         </div>
       </div>
-      
+
       <div class="info-section">
-        <h3 class="section-title">
-          <span class="line"></span>
-          QUEUE
-        </h3>
-        
+        <h3 class="section-title">作業 <span>진행 작업</span></h3>
         <div class="queue-holo" id="queue-holo-sidebar">
-          <div class="queue-empty" id="queue-sidebar-empty">
-            <span class="blink">NO ACTIVE TASKS</span>
-          </div>
+          <div class="queue-empty" id="queue-sidebar-empty"><span>진행 중인 작업 없음</span></div>
           <div class="queue-list" id="queue-list-sidebar" style="display:none;"></div>
         </div>
       </div>
     </aside>
   </div>
 
-  <!-- Holographic Notifications -->
-  <div id="notification-container" class="holo-notifications"></div>
+  <div id="notification-container" class="holo-notifications" aria-live="polite"></div>
 
-  <!-- Build Queue -->
+  <!-- Compact queue (shown on narrow screens where the sidebar is hidden) -->
   <div id="build-queue" class="build-queue hidden">
     <div class="build-queue-header">
-      <h4>🚧 CONSTRUCTION QUEUE</h4>
+      <h4>진행 작업</h4>
       <span class="queue-count" id="queue-count">0</span>
     </div>
-    <div class="queue-list" id="queue-list">
-      <!-- Queue items will be inserted here -->
-    </div>
+    <div class="queue-list" id="queue-list"></div>
   </div>
 
-  <!-- Detail Modal -->
   <div id="modal-overlay" class="holo-modal hidden">
-    <div class="modal-frame">
-      <div class="modal-corner tl"></div>
-      <div class="modal-corner tr"></div>
-      <div class="modal-corner bl"></div>
-      <div class="modal-corner br"></div>
-      <button class="modal-close">×</button>
+    <div class="modal-frame" role="dialog" aria-modal="true">
+      <button class="modal-close" aria-label="닫기">×</button>
       <div class="modal-content" id="modal-content"></div>
     </div>
   </div>
 
-  <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -1,16 +1,15 @@
 const EntityBaseConfig = require('../models/EntityBaseConfig');
-const { ENTITY_CATALOG_DEFAULTS } = require('../data/entityCatalogDefaults');
+const { ENTITY_CATALOG_DEFAULTS, CATALOG_DIR, CATALOG_FILES } = require('../data/catalog');
+const { ENTITY_TYPES, definitionToSpec } = require('../data/catalog/schema');
+const { serializeCatalogModule } = require('../data/catalog/serialize');
 const fs = require('fs').promises;
 const path = require('path');
 
+const createTypeCache = () => new Map(ENTITY_TYPES.map((entityType) => [entityType, new Map()]));
+
 class EntityConfigService {
   constructor() {
-    this.cache = new Map([
-      ['building', new Map()],
-      ['research', new Map()],
-      ['ship', new Map()],
-      ['defense', new Map()]
-    ]);
+    this.cache = createTypeCache();
     this.initialized = false;
     this.revision = 0;
     this.degraded = null;
@@ -107,12 +106,7 @@ class EntityConfigService {
   async reload() {
     const docs = await EntityBaseConfig.find({ status: { $ne: 'disabled' } }).lean();
     const seedMap = this._seedMap();
-    const nextCache = new Map([
-      ['building', new Map()],
-      ['research', new Map()],
-      ['ship', new Map()],
-      ['defense', new Map()]
-    ]);
+    const nextCache = createTypeCache();
 
     for (const definition of ENTITY_CATALOG_DEFAULTS) {
       nextCache.get(definition.entityType).set(
@@ -299,136 +293,58 @@ class EntityConfigService {
     }
   }
 
+  /**
+   * Persist the current catalog back into server/data/catalog/*.js so admin
+   * edits survive restarts (ensureSeedData treats those files as the seed).
+   * A timestamped backup of each rewritten file is kept next to it.
+   */
   async syncToFile() {
-    const fs = require('fs').promises;
-    const path = require('path');
-    const filePath = path.join(__dirname, '../data/entityCatalogDefaults.js');
+    const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '_').slice(0, 15);
 
-    console.log('[EntityConfigService] Syncing to file:', filePath);
+    for (const entityType of ENTITY_TYPES) {
+      const { file, header } = CATALOG_FILES[entityType];
+      const filePath = path.join(CATALOG_DIR, file);
+      const specs = this.listByType(entityType).map((definition) => definitionToSpec(definition));
+      const content = serializeCatalogModule(header, specs);
 
-    // Group configs by type
-    const groups = { building: {}, research: {}, ship: {}, defense: {} };
-    const configs = [];
-    this.cache.forEach(map => map.forEach(cfg => configs.push(cfg)));
-    
-    configs.forEach(cfg => {
-      if (groups[cfg.entityType]) {
-        groups[cfg.entityType][cfg.entityId] = cfg;
+      try {
+        const current = await fs.readFile(filePath, 'utf8').catch(() => null);
+        if (current === content) continue;
+        if (current !== null) {
+          const backupPath = path.join(CATALOG_DIR, 'backups', `${path.basename(file, '.js')}_${timestamp}.js`);
+          await fs.mkdir(path.dirname(backupPath), { recursive: true });
+          await fs.writeFile(backupPath, current, 'utf8');
+        }
+        await fs.writeFile(filePath, content, 'utf8');
+        console.log(`[EntityConfigService] Synced ${entityType} catalog to ${filePath}`);
+      } catch (err) {
+        console.error(`[EntityConfigService] Failed to sync ${entityType} catalog:`, err);
       }
-    });
+    }
+  }
 
-    // Helper to generate a constant object block
-    const generateConst = (name, type, extractor) => {
-      const entries = groups[type] || {};
-      const obj = {};
-      Object.keys(entries).forEach(id => {
-        obj[id] = extractor(entries[id]);
-      });
-      return `const ${name} = ${JSON.stringify(obj, null, 2)};`;
-    };
-
-    const content = `const { BUILDING_DEFAULTS, SHIP_DEFAULTS, RESEARCH_DEFAULTS, DEFENSE_DEFAULTS } = require('./entityDefaults');
-
-${generateConst('BUILDING_DISPLAY', 'building', c => c.display)}
-
-${generateConst('RESEARCH_DISPLAY', 'research', c => c.display)}
-
-${generateConst('SHIP_DISPLAY', 'ship', c => c.display)}
-
-${generateConst('DEFENSE_DISPLAY', 'defense', c => c.display)}
-
-${generateConst('BUILDING_REQUIREMENTS', 'building', c => c.requirements)}
-
-${generateConst('RESEARCH_REQUIREMENTS', 'research', c => c.requirements)}
-
-${generateConst('SHIP_REQUIREMENTS', 'ship', c => c.requirements)}
-
-${generateConst('DEFENSE_REQUIREMENTS', 'defense', c => c.requirements)}
-
-${generateConst('SHIP_STATS', 'ship', c => c.stats)}
-
-${generateConst('DEFENSE_STATS', 'defense', c => c.stats)}
-
-${generateConst('BUILDING_EFFECTS', 'building', c => c.effects)}
-
-
-function normalizeDefaults(entityType, defaults, displayMap, requirementsMap = {}, effectsMap = {}, statsMap = {}) {
-  return Object.entries(defaults).map(([entityId, def]) => ({
-    entityType,
-    entityId,
-    status: 'active',
-    schemaVersion: 2,
-    revision: 1,
-    display: {
-      name: displayMap[entityId]?.name || entityId,
-      icon: displayMap[entityId]?.icon || '',
-      category: displayMap[entityId]?.category || '',
-      description: displayMap[entityId]?.description || ''
-    },
-    requirements: requirementsMap[entityId] || {},
-    costModel: {
-      baseCost: {
-        metal: def.baseCost?.metal || 0,
-        crystal: def.baseCost?.crystal || 0,
-        deuterium: def.baseCost?.deuterium || 0
-      },
-      costMultiplier: def.costMultiplier ?? null,
-      scalingMode: 'exponential'
-    },
-    timeModel: {
-      baseTime: def.buildTime ?? null,
-      timeMultiplier: def.costMultiplier ?? null,
-      scalingMode: 'exponential'
-    },
-
-    effects: effectsMap[entityId] || {},
-    stats: statsMap[entityId] || {},
-    metadata: { seeded: true }
-  }));
-}
-
-const ENTITY_CATALOG_DEFAULTS = [
-  ...normalizeDefaults('building', BUILDING_DEFAULTS, BUILDING_DISPLAY, BUILDING_REQUIREMENTS, BUILDING_EFFECTS, {}),
-  ...normalizeDefaults('research', RESEARCH_DEFAULTS, RESEARCH_DISPLAY, RESEARCH_REQUIREMENTS, {}, {}),
-  ...normalizeDefaults('ship', SHIP_DEFAULTS, SHIP_DISPLAY, SHIP_REQUIREMENTS, {}, SHIP_STATS),
-  ...normalizeDefaults('defense', DEFENSE_DEFAULTS, DEFENSE_DISPLAY, DEFENSE_REQUIREMENTS, {}, DEFENSE_STATS)
-];
-
-module.exports = {
-  ENTITY_CATALOG_DEFAULTS
-};
-`;
-
-    // Create backup before saving
-    try {
-      const stats = await fs.stat(filePath);
-      if (stats.isFile()) {
-        const now = new Date();
-        const timestamp = now.getFullYear().toString() +
-          (now.getMonth() + 1).toString().padStart(2, '0') +
-          now.getDate().toString().padStart(2, '0') + '_' +
-          now.getHours().toString().padStart(2, '0') +
-          now.getMinutes().toString().padStart(2, '0') +
-          now.getSeconds().toString().padStart(2, '0');
-        
-        const ext = path.extname(filePath);
-        const base = path.basename(filePath, ext);
-        const dir = path.dirname(filePath);
-        const backupPath = path.join(dir, `${base}_${timestamp}${ext}`);
-        
-        await fs.copyFile(filePath, backupPath);
-        console.log(`[EntityConfigService] Created backup: ${backupPath}`);
+  /**
+   * Player-facing view of the catalog (no admin metadata).
+   * @returns {{ revision: number, entities: object[] }}
+   */
+  toPublicCatalog() {
+    const entities = [];
+    for (const entityType of ENTITY_TYPES) {
+      for (const definition of this.cache.get(entityType)?.values() || []) {
+        if (definition.status !== 'active') continue;
+        entities.push({
+          entityType,
+          entityId: definition.entityId,
+          display: definition.display,
+          requirements: definition.requirements,
+          costModel: definition.costModel,
+          timeModel: definition.timeModel,
+          effects: definition.effects,
+          stats: definition.stats
+        });
       }
-    } catch (err) {
-      console.warn(`[EntityConfigService] Backup failed: ${err.message}`);
     }
-
-    try {
-      await fs.writeFile(filePath, content, 'utf8');
-      console.log(`[EntityConfigService] Synced overrides to ${filePath}`);
-    } catch (err) {
-      console.error(`[EntityConfigService] Failed to sync to file:`, err);
-    }
+    return { revision: this.revision, entities: this._clone(entities) };
   }
 
   async resetType(entityType) {

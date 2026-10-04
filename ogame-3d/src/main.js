@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import * as GameData from './data/gameData.js';
 import { gameState } from './core/GameState.js';
 import { SpaceScene } from './core/SpaceScene.js';
@@ -63,7 +62,8 @@ class CosmicEmpire {
         '3': 'research',
         '4': 'shipyard',
         '5': 'galaxy',
-        '6': 'fleet'
+        '6': 'fleet',
+        '7': 'combat'
       };
       
       if (viewMap[e.key]) {
@@ -78,25 +78,7 @@ class CosmicEmpire {
   }
   
   showWelcomeSequence() {
-    if (window.uiManager) {
-      window.uiManager.showNotification(
-        'SYSTEM ONLINE',
-        'Holographic interface initialized. Welcome Commander.',
-        'success'
-      );
-    }
-    
-    setTimeout(() => {
-      this.spaceScene.createLaser(
-        new THREE.Vector3(-8, 3, 0),
-        new THREE.Vector3(8, -3, 0),
-        0xff0000
-      );
-    }, 2000);
-    
-    setTimeout(() => {
-      this.spaceScene.createExplosion(new THREE.Vector3(5, 2, -5), 1);
-    }, 3000);
+    window.uiManager?.showNotification('통신 회선 개통', '은하의 역사가 또 한 페이지 넘어갑니다. 사령관, 지휘를 시작하십시오.', 'success');
   }
   
   showError(message) {
@@ -104,7 +86,8 @@ class CosmicEmpire {
     if (container) {
       const notification = document.createElement('div');
       notification.className = 'holo-notification error';
-      notification.innerHTML = '<div class="title">ERROR</div><div class="message">' + message + '</div>';
+      notification.innerHTML = '<div class="title">오류</div><div class="message"></div>';
+      notification.querySelector('.message').textContent = message;
       container.appendChild(notification);
     }
   }

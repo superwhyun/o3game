@@ -75,6 +75,11 @@ export class GameState extends EventEmitter {
       deathstar: 0
     };
     
+    this.fleetFormations = [];
+    this.fleetMovements = [];
+    this.planets = [];
+    this.unassignedShips = {};
+    this.stateRevision = -1;
     this.defense = {};
     this.planet = {
       name: 'Colony-1',
@@ -114,6 +119,17 @@ export class GameState extends EventEmitter {
       return;
     }
     
+    const revision = userData.stateRevision ?? 0;
+    const serverTime = new Date(userData.serverTime || Date.now()).getTime();
+    if (this.userId === userData.id && (revision < this.stateRevision || (revision === this.stateRevision && serverTime < (this.snapshotTime || 0)))) return false;
+    this.userId = userData.id;
+    this.stateRevision = revision;
+    this.snapshotTime = serverTime;
+    this.serverOffset = serverTime - Date.now();
+    this.planets = userData.planets;
+    this.fleetFormations = userData.fleetFormations || [];
+    this.fleetMovements = userData.fleetMovements || [];
+    this.unassignedShips = userData.unassignedShips || {};
     // Sync server settings
     this.serverSpeed = userData.serverSpeed || 1;
     console.log('[GameState.syncFromServer] Server speed set to:', this.serverSpeed);
@@ -150,7 +166,7 @@ export class GameState extends EventEmitter {
     
     // Sync fleet
     if (planet.fleet) {
-      this.fleet = { ...this.fleet, ...planet.fleet };
+      this.fleet = { ...planet.fleet };
     }
 
     if (planet.defense) {
@@ -160,6 +176,7 @@ export class GameState extends EventEmitter {
     // Sync planet info
     if (planet) {
       this.planet = {
+        id: planet._id,
         name: planet.name || 'Colony-1',
         position: planet.position || 4,
         galaxy: planet.galaxy || 1,
@@ -173,6 +190,7 @@ export class GameState extends EventEmitter {
 
     this.lastUpdate = new Date(userData.serverTime || planet.lastUpdate || Date.now()).getTime();
     this.recalculateDerivedState(planet);
+    this.emit('fleetStateChanged');
     this.emit('resourcesLoaded');
     this.emit('resourceChanged'); // Force UI refresh
     console.log('[GameState] Synced from server:', this.resources);

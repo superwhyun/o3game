@@ -13,22 +13,20 @@ const fleetMovementSchema = new mongoose.Schema({
   },
   
   // Fleet Composition
-  fleet: {
-    smallCargo: { type: Number, default: 0 },
-    largeCargo: { type: Number, default: 0 },
-    lightFighter: { type: Number, default: 0 },
-    heavyFighter: { type: Number, default: 0 },
-    cruiser: { type: Number, default: 0 },
-    battleship: { type: Number, default: 0 },
-    battlecruiser: { type: Number, default: 0 },
-    bomber: { type: Number, default: 0 },
-    destroyer: { type: Number, default: 0 },
-    deathstar: { type: Number, default: 0 },
-    recycler: { type: Number, default: 0 },
-    espionageProbe: { type: Number, default: 0 },
-    colonyShip: { type: Number, default: 0 }
-  },
-  
+  fleet: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  initialFleet: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  formationId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  formationNameAtLaunch: { type: String, default: '' },
+  formationRevisionAtLaunch: Number,
+  originPlanetId: mongoose.Schema.Types.ObjectId,
+  targetPlanetId: mongoose.Schema.Types.ObjectId,
+  requestId: String,
+  requestHash: String,
+  deckVersion: { type: Number, default: 1 },
+  combatWaves: { type: mongoose.Schema.Types.Mixed, default: null },
+  notice: { type: String, default: '' },
+  spyContext: { attackerEspionageLevel: Number, rulesVersion: Number },
+  scoutReportId: mongoose.Schema.Types.ObjectId,
   // Tactical 8-Wave Deck configuration for Combat Phase 1-8
   fleetDeck: {
     type: [{
@@ -87,5 +85,6 @@ const fleetMovementSchema = new mongoose.Schema({
 // Index for quick lookups
 fleetMovementSchema.index({ arrivalTime: 1, status: 1 });
 fleetMovementSchema.index({ userId: 1 });
+fleetMovementSchema.index({ userId: 1, requestId: 1 }, { unique: true, partialFilterExpression: { requestId: { $type: 'string' } } });
 
 module.exports = mongoose.model('FleetMovement', fleetMovementSchema);

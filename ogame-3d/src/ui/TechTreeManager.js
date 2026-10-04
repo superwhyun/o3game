@@ -538,7 +538,7 @@ export class TechTreeManager {
 
     const body = document.getElementById('tt-inspector-body');
     const dialog = document.createElement('div');
-    dialog.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:#001520; border:2px solid #00ffff; padding:20px; z-index:100; box-shadow:0 0 30px rgba(0,255,255,0.5);';
+    dialog.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:#0a0f19; border:1px solid #7d6a43; padding:20px; z-index:100; box-shadow:0 18px 40px rgba(0,0,0,0.5);';
     dialog.innerHTML = `
       <h3 style="margin-top:0; color:#00ffff;">Add Requirement</h3>
       <select id="tt-new-req-id" style="width:100%; padding:10px; background:#000; color:#00ffff; border:1px solid #00ffff;">

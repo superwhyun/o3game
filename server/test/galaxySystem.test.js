@@ -15,7 +15,7 @@ test('buildGalaxySystem exposes only the requested system and safe player fields
         isOnline: true,
         socketId: 'must-not-leak',
         planets: [
-          { galaxy: 1, system: 2, planet: 4, name: 'Home' },
+          { galaxy: 1, system: 2, planet: 4, name: 'Home', _id: 'home-id' },
           { galaxy: 1, system: 3, planet: 5, name: 'Elsewhere' }
         ]
       },
@@ -31,6 +31,7 @@ test('buildGalaxySystem exposes only the requested system and safe player fields
 
   assert.equal(result.positions[3].owner, 'self');
   assert.deepEqual(result.positions[3].planet, {
+    id: 'home-id',
     name: 'Home',
     username: 'Commander',
     isOnline: true
@@ -40,22 +41,24 @@ test('buildGalaxySystem exposes only the requested system and safe player fields
   assert.equal(result.positions[4].occupied, false);
 });
 
-test('buildGalaxySystem rejects invalid coordinates and duplicate positions', () => {
+test('buildGalaxySystem rejects invalid coordinates', () => {
   assert.throws(
     () => buildGalaxySystem({ galaxy: 0, system: 1, requestingUserId: 'player', users: [] }),
     /galaxy/
   );
+});
 
-  assert.throws(
-    () => buildGalaxySystem({
-      galaxy: 1,
-      system: 1,
-      requestingUserId: 'player',
-      users: [
-        { _id: 'one', username: 'One', planets: [{ galaxy: 1, system: 1, planet: 1 }] },
-        { _id: 'two', username: 'Two', planets: [{ galaxy: 1, system: 1, planet: 1 }] }
-      ]
-    }),
-    /duplicate/
-  );
+test('buildGalaxySystem keeps the first claimant of a duplicated slot and reports the rest', () => {
+  const result = buildGalaxySystem({
+    galaxy: 1,
+    system: 1,
+    requestingUserId: 'player',
+    users: [
+      { _id: 'one', username: 'One', planets: [{ galaxy: 1, system: 1, planet: 1 }] },
+      { _id: 'two', username: 'Two', planets: [{ galaxy: 1, system: 1, planet: 1 }] }
+    ]
+  });
+
+  assert.equal(result.positions[0].planet.username, 'One');
+  assert.deepEqual(result.conflicts, [{ position: 1, userId: 'two' }]);
 });

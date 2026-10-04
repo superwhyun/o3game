@@ -44,6 +44,7 @@ class SocketHandlers {
       user.lastLogin = new Date();
       await user.save();
       
+      socket.join(`user:${userId}`);
       this.connectedUsers.set(socket.id, userId);
       socket.userId = userId;
       
@@ -319,189 +320,23 @@ class SocketHandlers {
   }
   
   async processFleetArrivals() {
+    if (this.processingFleets) return;
+    this.processingFleets = true;
     try {
       const now = new Date();
-      const FleetMovement = require('../models/FleetMovement');
-      const arrivingFleets = await FleetMovement.find({
-        arrivalTime: { $lte: now },
-        status: 'flying'
-      });
-      
-      for (const fleet of arrivingFleets) {
-        await this.handleFleetArrival(fleet);
+      const movements = await FleetMovement.find({ $or: [
+        { status: 'flying', arrivalTime: { $lte: now } },
+        { status: 'returning', returnTime: { $lte: now } }
+      ] }).select('_id');
+      for (const movement of movements) {
+        try {
+          const users = await require('../services/FleetService').processMovement(movement._id, now);
+          for (const id of users) this.io.to(`user:${id}`).emit('fleetStateChanged');
+        } catch (error) { console.error('Fleet processing failed:', movement._id, error.message); }
       }
-
-      const returningFleets = await FleetMovement.find({
-        returnTime: { $lte: now },
-        status: 'returning'
-      });
-
-      for (const fleet of returningFleets) {
-        await this.completeFleetReturn(fleet);
-      }
-    } catch (error) {
-      console.error('Error processing fleet arrivals:', error);
-    }
-  }
-  
-  async handleFleetArrival(fleet) {
-    const targetUser = await User.findOne({
-      'planets.galaxy': fleet.destination.galaxy,
-      'planets.system': fleet.destination.system,
-      'planets.planet': fleet.destination.planet
-    });
-    
-    if (fleet.mission === 'transport' && targetUser) {
-        const targetPlanet = targetUser.planets.find(p =>
-            p.galaxy === fleet.destination.galaxy
-            && p.system === fleet.destination.system
-            && p.planet === fleet.destination.planet
-        );
-
-        if (targetPlanet) {
-            for (const [resource, amount] of Object.entries(fleet.cargo || {})) {
-                targetPlanet.resources[resource] = (targetPlanet.resources[resource] || 0) + amount;
-            }
-            targetUser.markModified('planets');
-            await targetUser.save();
-            fleet.cargo = { metal: 0, crystal: 0, deuterium: 0 };
-        }
-    } else if (fleet.mission === 'attack' && targetUser) {
-        const targetPlanet = targetUser.planets.find(p => 
-            p.galaxy === fleet.destination.galaxy && 
-            p.system === fleet.destination.system && 
-            p.planet === fleet.destination.planet
-        );
-
-        if (targetPlanet) {
-            // Setup an auto-generated defense deck for the defender since UI isn't built yet
-            // Putting all defenses in wave 0, and all ships evenly spread or in wave 1
-            const defenderDeck = Array(8).fill(null).map(() => ({}));
-            
-            // For now, put all defenses in Wave 0, all mobile ships in Wave 1
-            let defenseAssigned = false;
-            for (const [defId, count] of Object.entries(targetPlanet.defense || {})) {
-                if (count > 0 && !defenseAssigned) {
-                    defenderDeck[0].defenseType = defId;
-                    defenderDeck[0].defenseCount = count;
-                    defenseAssigned = true;
-                }
-            }
-            let shipAssigned = false;
-            for (const [shipId, count] of Object.entries(targetPlanet.fleet || {})) {
-                if (count > 0 && !shipAssigned) {
-                    defenderDeck[1].shipType = shipId;
-                    defenderDeck[1].shipCount = count;
-                    shipAssigned = true;
-                }
-            }
-
-            const techs = {
-                attacker: {}, // Fetch attacker techs in real code
-                defender: targetUser.research || {}
-            };
-
-            const combatResult = await CombatService.simulateBattle8Wave(fleet.fleetDeck, defenderDeck, techs);
-            const survivingFleet = calculateSurvivors(
-                fleet.fleet.toObject ? fleet.fleet.toObject() : fleet.fleet,
-                combatResult.attackerLosses || {}
-            );
-            const survivorCargoCapacity = Object.entries(survivingFleet).reduce((total, [shipType, count]) => {
-                const cargo = entityConfigService.getEntity('ship', shipType)?.stats?.cargo || 0;
-                return total + (cargo * count);
-            }, 0);
-            const carriedCargo = Object.values(fleet.cargo || {}).reduce((total, amount) => total + amount, 0);
-            const remainingCargoCapacity = Math.max(0, survivorCargoCapacity - carriedCargo);
-            const defenderResourcesForLoot = Object.fromEntries(
-                ['metal', 'crystal', 'deuterium'].map((resource) => [
-                    resource,
-                    Math.max(0, Math.floor(targetPlanet.resources[resource] || 0))
-                ])
-            );
-            const loot = combatResult.winner === 'attacker'
-                ? calculateRaidLoot(defenderResourcesForLoot, remainingCargoCapacity)
-                : { metal: 0, crystal: 0, deuterium: 0 };
-
-            for (const [resource, amount] of Object.entries(loot)) {
-                targetPlanet.resources[resource] -= amount;
-            }
-            fleet.fleet = survivingFleet;
-            fleet.cargo = mergeCargo(
-                fleet.cargo?.toObject ? fleet.cargo.toObject() : (fleet.cargo || {}),
-                loot
-            );
-
-            // Create BattleReport
-            const battleReport = new BattleReport({
-                attacker: {
-                    userId: fleet.userId,
-                    username: fleet.username,
-                    coordinates: fleet.origin
-                },
-                defender: {
-                    userId: targetUser._id,
-                    username: targetUser.username,
-                    coordinates: fleet.destination
-                },
-                rounds: combatResult.rounds,
-                result: {
-                    winner: combatResult.winner,
-                    attackerLosses: combatResult.attackerLosses,
-                    defenderLosses: combatResult.defenderLosses,
-                    debrisField: combatResult.debrisField,
-                    loot,
-                    moonChance: combatResult.moonChance
-                }
-            });
-            await battleReport.save();
-
-            fleet.battleReport = battleReport._id;
-            
-            // Deduct defender losses
-            for (const [type, count] of Object.entries(combatResult.defenderLosses || {})) {
-                if (targetPlanet.fleet && targetPlanet.fleet[type]) targetPlanet.fleet[type] = Math.max(0, targetPlanet.fleet[type] - count);
-                if (targetPlanet.defense && targetPlanet.defense[type]) targetPlanet.defense[type] = Math.max(0, targetPlanet.defense[type] - count);
-            }
-
-            await targetUser.save();
-        }
-    }
-
-    fleet.status = 'returning';
-    fleet.returnTime = new Date(Date.now() + (fleet.arrivalTime - fleet.startTime));
-    await fleet.save();
+    } finally { this.processingFleets = false; }
   }
 
-  async completeFleetReturn(fleet) {
-    const owner = await User.findById(fleet.userId);
-    if (!owner) {
-      fleet.status = 'completed';
-      await fleet.save();
-      return;
-    }
-
-    const originPlanet = owner.planets.find((planet) => (
-      planet.galaxy === fleet.origin.galaxy
-      && planet.system === fleet.origin.system
-      && planet.planet === fleet.origin.planet
-    ));
-    if (!originPlanet) {
-      throw new Error(`Fleet ${fleet._id} has no valid origin planet`);
-    }
-
-    for (const [shipType, amount] of Object.entries(fleet.fleet || {})) {
-      originPlanet.fleet[shipType] = (originPlanet.fleet[shipType] || 0) + amount;
-    }
-    for (const [resource, amount] of Object.entries(fleet.cargo || {})) {
-      originPlanet.resources[resource] = (originPlanet.resources[resource] || 0) + amount;
-    }
-
-    owner.markModified('planets');
-    await owner.save();
-    fleet.status = 'completed';
-    await fleet.save();
-  }
-  
   hasResources(resources, cost) {
     for (const [res, amount] of Object.entries(cost)) {
       if ((resources[res] || 0) < amount) return false;

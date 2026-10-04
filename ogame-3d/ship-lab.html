@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ship Lab — Cosmic Empire</title>
+  <link rel="stylesheet" href="/src/dev/shipLab.css">
+</head>
+<body>
+  <main class="lab">
+    <header>
+      <h1>Ship Lab</h1>
+      <p>catalog <code>model</code> 사양을 편집하며 3D 함선을 미리 봅니다. 결과 JSON을 <code>server/data/catalog/ships.js</code> 의 <code>model</code> 에 붙여넣으세요.</p>
+    </header>
+    <section class="lab-grid" id="lab-grid"></section>
+    <section class="lab-editor">
+      <div class="lab-viewer" id="lab-viewer"></div>
+      <textarea id="lab-spec" spellcheck="false"></textarea>
+      <p id="lab-error" class="lab-error"></p>
+    </section>
+  </main>
+  <script type="module" src="/src/dev/shipLab.js"></script>
+</body>
+</html>

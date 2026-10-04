@@ -16,7 +16,7 @@ const tierMultiplierSchema = new mongoose.Schema({
 const entityBaseConfigSchema = new mongoose.Schema({
   entityType: {
     type: String,
-    enum: ['building', 'ship', 'research'],
+    enum: ['building', 'ship', 'research', 'defense'],
     required: true
   },
   entityId: {
@@ -40,7 +40,9 @@ const entityBaseConfigSchema = new mongoose.Schema({
     name: { type: String, default: '' },
     icon: { type: String, default: '' },
     category: { type: String, default: '' },
-    description: { type: String, default: '' }
+    description: { type: String, default: '' },
+    // 3D model spec for ships/defense (see ogame-3d/src/three/ships)
+    model: { type: mongoose.Schema.Types.Mixed, default: undefined }
   },
   requirements: {
     type: mongoose.Schema.Types.Mixed,

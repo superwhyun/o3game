@@ -1,0 +1,407 @@
+/* ==========================================================================
+   Star-system orbital chart (성계도). Tokens come from /style.css
+   ========================================================================== */
+
+.galaxy-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-arrow {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+}
+
+.nav-arrow:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold-dim);
+}
+
+.coord-field {
+  display: grid;
+  gap: 0;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.coord-field input {
+  width: 64px;
+  height: 34px;
+  padding: 0 6px;
+  background: var(--ink-0);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--gold-bright);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.coord-field input:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.coord-sep {
+  align-self: flex-end;
+  padding-bottom: 6px;
+  color: var(--gold-dim);
+}
+
+.galaxy-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.galaxy-holo {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  transition: opacity var(--duration);
+}
+
+.galaxy-holo.is-loading {
+  opacity: 0.55;
+}
+
+/* Chart */
+.orbit-map {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(200, 169, 106, 0.07), transparent 55%),
+    radial-gradient(ellipse at 50% 50%, #0d1524 0%, var(--ink-0) 80%);
+}
+
+.orbit-svg {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  overflow: visible;
+}
+
+.orbit-spokes line {
+  stroke: var(--gold);
+  stroke-opacity: 0.06;
+  stroke-width: 1;
+}
+
+.orbit {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-opacity: 0.55;
+  transition: stroke var(--duration-fast), stroke-opacity var(--duration-fast);
+}
+
+.orbit-own { stroke: var(--gold-dim); stroke-opacity: 0.8; }
+.orbit-other { stroke: #3d5679; stroke-opacity: 0.8; }
+
+.orbit.is-selected {
+  stroke: var(--gold);
+  stroke-opacity: 1;
+  stroke-dasharray: 4 6;
+}
+
+.star-core {
+  filter: drop-shadow(0 0 18px rgba(243, 215, 154, 0.75));
+}
+
+.orbit-caption {
+  position: absolute;
+  top: 18px;
+  left: 22px;
+  display: grid;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.orbit-caption strong {
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--gold-bright);
+  letter-spacing: 0.04em;
+}
+
+.orbit-caption span {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+
+.slot {
+  cursor: pointer;
+  outline: none;
+}
+
+.slot-hit {
+  fill: transparent;
+}
+
+.slot-ring {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 1.5;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+.slot:hover .slot-ring,
+.slot:focus-visible .slot-ring {
+  opacity: 0.5;
+}
+
+.slot.is-selected .slot-ring {
+  opacity: 1;
+}
+
+.slot-planet.planet-own { fill: url(#planet-own); }
+.slot-planet.planet-other { fill: url(#planet-other); }
+
+.slot-atmo {
+  fill: none;
+  stroke-width: 1;
+  stroke-opacity: 0.45;
+}
+
+.slot-own .slot-atmo { stroke: var(--gold-bright); }
+.slot-other .slot-atmo { stroke: #9fc1ea; }
+
+.slot-marker {
+  fill: var(--ink-0);
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+}
+
+.slot:hover .slot-marker,
+.slot.is-selected .slot-marker {
+  stroke: var(--gold);
+}
+
+.slot-label,
+.slot-sublabel {
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--ink-0);
+  stroke-width: 6px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.slot-label {
+  fill: var(--text);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.slot-own .slot-label {
+  fill: var(--gold-bright);
+}
+
+.slot-sublabel {
+  fill: var(--text-dim);
+  font-size: 19px;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+/* Owner names only on demand, so neighbouring planets don't collide. */
+.slot:hover .slot-sublabel,
+.slot:focus-visible .slot-sublabel,
+.slot.is-selected .slot-sublabel {
+  opacity: 1;
+}
+
+.orbit-legend {
+  position: absolute;
+  left: 22px;
+  bottom: 16px;
+  display: flex;
+  gap: 16px;
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+
+.orbit-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border-radius: 50%;
+}
+
+.legend-own::before { background: var(--gold); }
+.legend-other::before { background: #5f7fa8; }
+.legend-empty::before {
+  border: 1px solid var(--text-faint);
+  border-radius: 0 !important;
+  transform: rotate(45deg) scale(0.8);
+}
+
+/* Side column */
+.orbit-side {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--panel-solid);
+}
+
+.slot-detail {
+  flex: none;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.slot-detail-title {
+  margin: 2px 0 12px;
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.spec-list.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.spec-list.single .spec-row:nth-child(n) {
+  padding-inline: 0;
+  border-left: 0;
+}
+
+.rel-own { color: var(--gold-bright) !important; }
+.rel-other { color: #9fc1ea !important; }
+.rel-empty { color: var(--text-faint) !important; }
+
+.slot-detail-actions {
+  margin-top: 14px;
+}
+
+.slot-detail-actions .cmd-btn {
+  width: 100%;
+}
+
+.slot-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  padding: 4px 0;
+}
+
+.slot-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 20px 7px 18px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+  font-size: var(--text-sm);
+}
+
+.slot-row:hover {
+  background: var(--gold-wash);
+}
+
+.slot-row.is-selected {
+  border-left-color: var(--gold);
+  background: linear-gradient(90deg, rgba(200, 169, 106, 0.14), transparent);
+}
+
+.slot-index {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.slot-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.slot-row.slot-empty .slot-name {
+  color: var(--text-faint);
+}
+
+.slot-row.slot-own .slot-name {
+  color: var(--gold-bright);
+}
+
+.slot-owner {
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+}
+
+.galaxy-error {
+  color: var(--alert);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 900px) {
+  .galaxy-holo {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(260px, 1fr) auto;
+    overflow-y: auto;
+  }
+
+  .orbit-map {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .orbit-caption,
+  .orbit-legend {
+    position: static;
+  }
+
+  .orbit-svg {
+    height: auto;
+  }
+
+  .orbit-side {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .slot-list {
+    max-height: 240px;
+  }
+
+  .galaxy-nav {
+    width: 100%;
+  }
+
+  .galaxy-nav .coord-field span {
+    display: none;
+  }
+
+  #galaxy-home {
+    margin-left: auto;
+  }
+
+  .coord-field input {
+    width: 52px;
+  }
+}

@@ -46,3 +46,9 @@ desktop.ini
 # Project specific
 scratch/
 .claude/
+
+# Browser verification output
+artifacts/fleet-ui/test-results/
+
+# Private database backups
+artifacts/db-backups/

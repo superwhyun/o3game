@@ -96,7 +96,13 @@ function assertCargoAvailable(cargo, originResources) {
   const normalizedCargo = normalizeCargo(cargo);
 
   for (const resource of CARGO_RESOURCES) {
-    const available = assertNonNegativeInteger(originResources[resource] ?? 0, `origin ${resource}`);
+    // Stored amounts are fractional (production accrues continuously); only
+    // whole units can be loaded, so compare against the floored stock.
+    const stored = originResources[resource] ?? 0;
+    if (!Number.isFinite(stored) || stored < 0) {
+      throw new RangeError(`origin ${resource} must be a finite non-negative number`);
+    }
+    const available = Math.floor(stored);
     if (normalizedCargo[resource] > available) {
       throw new RangeError(`Insufficient ${resource} at origin`);
     }

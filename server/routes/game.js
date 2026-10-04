@@ -1,7 +1,12 @@
+const { transactionalRoute, afterCommit } = require('../services/transactions');
+const formations = require('../services/FleetFormationService');
+const fleetService = require('../services/FleetService');
+const { formatFleetMovement } = require('../services/GameStateService');
 const express = require('express');
 
 const { authMiddleware } = require('../middleware/admin');
 const BattleReport = require('../models/BattleReport');
+const GameConfig = require('../models/GameConfig');
 const FleetMovement = require('../models/FleetMovement');
 const User = require('../models/User');
 const entityConfigService = require('../services/EntityConfigService');
@@ -15,6 +20,7 @@ const {
   normalizeCargo
 } = require('../utils/fleetRules');
 const { buildGalaxySystem } = require('../utils/galaxySystem');
+const { GALAXY_COUNT, POSITION_COUNT, SYSTEM_COUNT } = require('../utils/universe');
 
 const router = express.Router();
 
@@ -35,12 +41,32 @@ function assertDestination(destination) {
   const system = Number(destination.system);
   const planet = Number(destination.planet);
 
-  if (!Number.isSafeInteger(galaxy) || galaxy < 1 || galaxy > 9) throw new RangeError('destination galaxy is invalid');
-  if (!Number.isSafeInteger(system) || system < 1 || system > 499) throw new RangeError('destination system is invalid');
-  if (!Number.isSafeInteger(planet) || planet < 1 || planet > 15) throw new RangeError('destination planet is invalid');
+  if (!Number.isSafeInteger(galaxy) || galaxy < 1 || galaxy > GALAXY_COUNT) throw new RangeError('destination galaxy is invalid');
+  if (!Number.isSafeInteger(system) || system < 1 || system > SYSTEM_COUNT) throw new RangeError('destination system is invalid');
+  if (!Number.isSafeInteger(planet) || planet < 1 || planet > POSITION_COUNT) throw new RangeError('destination planet is invalid');
 
   return { galaxy, system, planet };
 }
+
+// Entity catalog for the client: display info, costs, requirements, stats and
+// 3D model specs. The client renders every list from this, so new entities
+// added to server/data/catalog appear in the UI without client changes.
+router.get('/catalog', authMiddleware, async (req, res) => {
+  try {
+    const config = await GameConfig.getConfig();
+    res.json({
+      ...entityConfigService.toPublicCatalog(),
+      timeMultipliers: {
+        building: config.buildingSettings?.buildTimeMultiplier || 1,
+        research: config.researchSettings?.researchTimeMultiplier || 1,
+        ship: 1,
+        defense: 1
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 router.get('/galaxy', authMiddleware, async (req, res) => {
   try {
@@ -51,12 +77,16 @@ router.get('/galaxy', authMiddleware, async (req, res) => {
       'planets.system': system
     }).select('_id username isOnline planets').lean();
 
-    res.json(buildGalaxySystem({
+    const { conflicts, ...view } = buildGalaxySystem({
       galaxy,
       system,
       requestingUserId: req.user._id,
       users
-    }));
+    });
+    if (conflicts.length > 0) {
+      console.warn(`[galaxy] ${conflicts.length} duplicate planet slot(s) in [${galaxy}:${system}] — run "npm run migrate:planets"`, conflicts);
+    }
+    res.json(view);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -71,101 +101,36 @@ router.get('/fleets', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/fleets', authMiddleware, async (req, res) => {
+function notify(req) {
+  afterCommit(() => req.app.get('io')?.to(`user:${req.user._id}`).emit('fleetStateChanged'));
+}
+router.get('/fleet-formations', authMiddleware, async (req,res) => {
+  try { const state=await settleUserState(req.user._id);res.json({snapshot:state.snapshot}); }
+  catch(error) {res.status(503).json({error:error.message});}
+});
+for (const [method, path, action] of [['post','/fleet-formations','create'],['patch','/fleet-formations/:id','update'],['delete','/fleet-formations/:id','delete']]) {
+  router[method](path, authMiddleware, transactionalRoute(async (req,res) => {
+    const result=await formations.change(req.user._id,action,req.params.id,req.body);
+    const state=await settleUserState(req.user._id);notify(req);
+    res.status(action==='create'?201:200).json({...result,snapshot:state.snapshot});
+  }));
+}
+router.get('/fleet-requests/:requestId',authMiddleware,async(req,res)=>{
+  const movement=await FleetMovement.findOne({userId:req.user._id,requestId:req.params.requestId});
+  if(!movement)return res.status(404).json({error:'아직 처리되지 않은 요청입니다.'});
+  res.json({fleet:formatFleetMovement(movement)});
+});
+router.post('/fleets',authMiddleware,async(req,res)=>{
   try {
-    const { mission, fleet, cargo, destination, speed = 100 } = req.body;
-    if (!['transport', 'attack'].includes(mission)) {
-      return res.status(400).json({ error: 'Only transport and attack missions are currently available' });
-    }
-
-    const normalizedDestination = assertDestination(destination);
-    const normalizedSpeed = Number(speed);
-    const settled = await settleUserState(req.user._id, new Date());
-    const originPlanet = settled.user.planets[settled.user.currentPlanet] || settled.user.planets[0];
-    const selectedFleet = assertNonEmptyFleet(assertFleetAvailable(fleet, originPlanet.fleet || {}));
-    const selectedCargo = assertCargoAvailable(normalizeCargo(cargo), originPlanet.resources || {});
-    const shipStats = Object.fromEntries(Object.keys(selectedFleet).map((shipType) => [
-      shipType,
-      entityConfigService.getEntity('ship', shipType)?.stats
-    ]));
-    const { cargoCapacity, slowestSpeed } = calculateFleetProfile(selectedFleet, shipStats);
-    const cargoTotal = Object.values(selectedCargo).reduce((total, amount) => total + amount, 0);
-    if (cargoTotal > cargoCapacity) {
-      return res.status(400).json({ error: 'Cargo exceeds the selected fleet capacity' });
-    }
-
-    const targetUser = await User.findOne({
-      'planets.galaxy': normalizedDestination.galaxy,
-      'planets.system': normalizedDestination.system,
-      'planets.planet': normalizedDestination.planet
-    });
-    const targetPlanet = targetUser?.planets.find((planet) => (
-      planet.galaxy === normalizedDestination.galaxy
-      && planet.system === normalizedDestination.system
-      && planet.planet === normalizedDestination.planet
-    ));
-    if (!targetUser || !targetPlanet) {
-      return res.status(400).json({ error: 'The mission destination must contain a planet' });
-    }
-
-    const origin = {
-      galaxy: originPlanet.galaxy,
-      system: originPlanet.system,
-      planet: originPlanet.planet
-    };
-    if (origin.galaxy === normalizedDestination.galaxy
-      && origin.system === normalizedDestination.system
-      && origin.planet === normalizedDestination.planet) {
-      return res.status(400).json({ error: 'A transport destination must differ from the origin' });
-    }
-
-    const travelSeconds = calculateTravelSeconds(origin, normalizedDestination, slowestSpeed, normalizedSpeed);
-    const startedAt = new Date();
-    const arrivalTime = new Date(startedAt.getTime() + travelSeconds * 1000);
-    const fleetDeck = mission === 'attack'
-      ? [...Object.entries(selectedFleet).slice(0, 8).map(([type, count]) => ({ type, count })), ...Array(8).fill(null)].slice(0, 8)
-      : undefined;
-
-    for (const [shipType, amount] of Object.entries(selectedFleet)) {
-      originPlanet.fleet[shipType] -= amount;
-    }
-    for (const [resource, amount] of Object.entries(selectedCargo)) {
-      originPlanet.resources[resource] -= amount;
-    }
-    settled.user.markModified('planets');
-
-    const movement = await FleetMovement.create({
-      userId: settled.user._id,
-      username: settled.user.username,
-      targetUserId: targetUser._id,
-      mission,
-      fleet: selectedFleet,
-      ...(fleetDeck ? { fleetDeck } : {}),
-      cargo: selectedCargo,
-      origin,
-      destination: normalizedDestination,
-      startTime: startedAt,
-      arrivalTime,
-      speed: normalizedSpeed
-    });
-    await settled.user.save();
-
-    res.status(201).json({
-      fleet: {
-        id: movement._id,
-        mission: movement.mission,
-        status: movement.status,
-        arrivalTime: movement.arrivalTime,
-        returnTime: movement.returnTime,
-        origin: movement.origin,
-        destination: movement.destination,
-        fleet: movement.fleet,
-        cargo: movement.cargo
-      },
-      snapshot: (await settleUserState(settled.user, new Date())).snapshot
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
+    await settleUserState(req.user._id);
+    const movement=await fleetService.launch(req.user._id,req.body);
+    notify(req);
+    let snapshot;
+    try {snapshot=(await settleUserState(req.user._id)).snapshot;} catch(error) {console.error('Fleet committed; snapshot pending:',error.message);}
+    res.status(201).json({fleet:formatFleetMovement(movement),snapshot,snapshotPending:!snapshot});
+  } catch(error) {
+    const unsupported=error.code===20 || /Transaction numbers/.test(error.message);
+    res.status(error.statusCode || (unsupported?503:error.name==='VersionError'?409:400)).json({error:unsupported?'DB의 트랜잭션 구성이 필요합니다.':error.message,code:error.code||'LAUNCH_FAILED'});
   }
 });
 
@@ -183,5 +148,7 @@ router.get('/reports', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Unable to load battle reports' });
   }
 });
+
+router.use(require('./scouts'));
 
 module.exports = router;

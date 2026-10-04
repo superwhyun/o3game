@@ -37,7 +37,7 @@ const authLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 120, // 120 requests per minute for gameplay APIs
+  max: process.env.NODE_ENV === 'test' ? 1000 : 120, // Isolated browser tests reload repeatedly.
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' }
@@ -82,7 +82,9 @@ async function startServer() {
   try {
     getJwtSecret();
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cosmic_empire');
+    const transactionsEnabled = await require('./services/transactions').supportsTransactions();
     console.log('✅ MongoDB connected');
+    if (!transactionsEnabled) console.warn('Saved fleet mutations need a replica set; existing gameplay remains available.');
     await entityConfigService.initialize();
     console.log(`🧠 Entity catalog loaded (revision ${entityConfigService.getRevision()})`);
 

@@ -1,3 +1,5 @@
+const { AsyncLocalStorage } = require('node:async_hooks');
+const battleRandom = new AsyncLocalStorage();
 const GameConfig = require('../models/GameConfig');
 const entityConfigService = require('../services/EntityConfigService');
 
@@ -45,6 +47,12 @@ const DEFAULT_COMBAT_CLASSES = {
 
 class CombatService {
   constructor() {}
+  random() { return battleRandom.getStore()?.() ?? Math.random(); }
+  async simulateBattle8Wave(attackerDeck, defenderDeck, techs, maxRoundsOverride = null, seed = 'legacy') {
+    let state = Array.from(seed).reduce((n,c) => (Math.imul(n,31)+c.charCodeAt(0))>>>0, 2166136261);
+    const rng = () => { state = (state + 0x6D2B79F5) >>> 0; let n = state; n = Math.imul(n ^ n >>> 15, n | 1); n ^= n + Math.imul(n ^ n >>> 7, n | 61); return ((n ^ n >>> 14) >>> 0) / 4294967296; };
+    return battleRandom.run(rng, () => this.simulateWaves(attackerDeck, defenderDeck, techs, maxRoundsOverride));
+  }
 
   getCombatClass(entityType) {
     const definition = entityConfigService.getEntity('ship', entityType) || 
@@ -59,7 +67,7 @@ class CombatService {
     return 1.0;
   }
 
-  async simulateBattle8Wave(attackerDeck, defenderDeck, techs, maxRoundsOverride = null) {
+  async simulateWaves(attackerDeck, defenderDeck, techs, maxRoundsOverride = null) {
     const config = await GameConfig.getConfig();
     const rounds = [];
     
@@ -82,35 +90,22 @@ class CombatService {
 
       // 1. Initialize Attacker for this wave
       const aSlot = attackerDeck[wave];
-      if (aSlot && aSlot.type && aSlot.count > 0) {
-        const force = this.initializeUnit(aSlot.type, aSlot.count, techs.attacker);
-        if (force) {
-          if (waveState.attackerForces[aSlot.type]) {
-            this.mergeForces(waveState.attackerForces[aSlot.type], force);
-          } else {
-            waveState.attackerForces[aSlot.type] = force;
-          }
-          totalInitialAttacker[aSlot.type] = (totalInitialAttacker[aSlot.type] || 0) + aSlot.count;
-        }
+      const attackers = aSlot?.ships || (aSlot?.type ? { [aSlot.type]: aSlot.count } : {});
+      for (const [type, count] of Object.entries(attackers)) {
+        const force = this.initializeUnit(type, count, techs.attacker);
+        if (!force) continue;
+        if (waveState.attackerForces[type]) this.mergeForces(waveState.attackerForces[type], force);
+        else waveState.attackerForces[type] = force;
+        totalInitialAttacker[type] = (totalInitialAttacker[type] || 0) + count;
       }
-
-      // 2. Initialize Defender for this wave
       const dSlot = defenderDeck[wave];
-      if (dSlot) {
-        if (dSlot.defenseType && dSlot.defenseCount > 0) {
-          const force = this.initializeUnit(dSlot.defenseType, dSlot.defenseCount, techs.defender);
-          if (force) {
-            waveState.defenderForces[dSlot.defenseType] = force;
-            totalInitialDefender[dSlot.defenseType] = (totalInitialDefender[dSlot.defenseType] || 0) + dSlot.defenseCount;
-          }
-        }
-        if (dSlot.shipType && dSlot.shipCount > 0) {
-          const force = this.initializeUnit(dSlot.shipType, dSlot.shipCount, techs.defender);
-          if (force) {
-            waveState.defenderForces[dSlot.shipType] = force;
-            totalInitialDefender[dSlot.shipType] = (totalInitialDefender[dSlot.shipType] || 0) + dSlot.shipCount;
-          }
-        }
+      const defenders = dSlot?.ships || (dSlot?.shipType ? { [dSlot.shipType]: dSlot.shipCount } : {});
+      const defenses = dSlot?.defense || (dSlot?.defenseType ? { [dSlot.defenseType]: dSlot.defenseCount } : {});
+      for (const [type, count] of Object.entries({ ...defenders, ...defenses })) {
+        const force = this.initializeUnit(type, count, techs.defender);
+        if (!force) continue;
+        waveState.defenderForces[type] = force;
+        totalInitialDefender[type] = (totalInitialDefender[type] || 0) + count;
       }
 
       const hasAttacker = Object.keys(waveState.attackerForces).length > 0;
@@ -248,7 +243,7 @@ class CombatService {
             shots.push({ damage: attackerData.attack * globalMultiplier, type: attackerType, combatClass: attackerData.combatClass });
             currentChance--;
           }
-          if (Math.random() < currentChance) {
+          if (this.random() < currentChance) {
             shots.push({ damage: attackerData.attack * globalMultiplier, type: attackerType, combatClass: attackerData.combatClass });
           }
         }
@@ -258,11 +253,11 @@ class CombatService {
       if (defenderTypes.length === 0) break;
       
       for (const shot of shots) {
-        const targetType = defenderTypes[Math.floor(Math.random() * defenderTypes.length)];
+        const targetType = defenderTypes[Math.floor(this.random() * defenderTypes.length)];
         const target = remaining[targetType];
         
         if (target.count <= 0) continue;
-        const targetIndex = Math.floor(Math.random() * target.count);
+        const targetIndex = Math.floor(this.random() * target.count);
 
         // Calculate final damage with RPS Multiplier
         let rpsBonus = this.getMultiplier(shot.combatClass, target.combatClass);

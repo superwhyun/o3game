@@ -1,0 +1,10 @@
+# Opt-in fleet transaction support. Preserve the existing mongo_data volume.
+# docker compose -f docker-compose.yml -f docker-compose.fleets.yml up -d mongodb
+# docker compose exec mongodb mongosh --eval 'rs.initiate({_id:"oogame",members:[{_id:0,host:"mongodb:27017"}]})'
+# docker compose -f docker-compose.yml -f docker-compose.fleets.yml up -d server client
+services:
+  mongodb:
+    command: ["mongod", "--replSet", "oogame", "--bind_ip_all"]
+  server:
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/cosmic_empire?replicaSet=oogame&directConnection=true

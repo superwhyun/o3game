@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const battleReportSchema = new mongoose.Schema({
+  movementId: mongoose.Schema.Types.ObjectId,
   // Participants
   attacker: {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -75,4 +76,5 @@ const battleReportSchema = new mongoose.Schema({
   defenderRead: { type: Boolean, default: false }
 });
 
+battleReportSchema.index({ movementId: 1 }, { unique: true, partialFilterExpression: { movementId: { $type: 'objectId' } } });
 module.exports = mongoose.model('BattleReport', battleReportSchema);

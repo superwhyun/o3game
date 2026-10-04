@@ -1,3 +1,4 @@
+const { afterCommit, transactionalRoute } = require('../services/transactions');
 const express = require('express');
 const router = express.Router();
 const { adminMiddleware, superAdminMiddleware } = require('../middleware/admin');
@@ -7,6 +8,7 @@ const FleetMovement = require('../models/FleetMovement');
 const BattleReport = require('../models/BattleReport');
 const entityConfigService = require('../services/EntityConfigService');
 const { settleUserState } = require('../services/GameStateService');
+const { normalizeAdminUserUpdate } = require('../utils/adminUserUpdate');
 
 // Get game configuration
 router.get('/config', adminMiddleware, async (req, res) => {
@@ -158,26 +160,35 @@ router.get('/users/:userId', adminMiddleware, async (req, res) => {
 });
 
 // Update user (ban, resources, etc)
-router.put('/users/:userId', superAdminMiddleware, async (req, res) => {
+router.put('/users/:userId', superAdminMiddleware, transactionalRoute(async (req, res) => {
   try {
     const user = await User.findById(req.params.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    const allowedUpdates = ['isBanned', 'banReason', 'isAdmin', 'adminRole'];
-    allowedUpdates.forEach(field => {
-      if (req.body[field] !== undefined) {
-        user[field] = req.body[field];
+    const update = normalizeAdminUserUpdate(req.body, user.planets.length);
+    const willRemainSuperAdmin = (update.isAdmin ?? user.isAdmin) &&
+      (update.adminRole === undefined ? user.adminRole : update.adminRole) === 'superadmin';
+    if (user.isAdmin && user.adminRole === 'superadmin' && !willRemainSuperAdmin) {
+      const anotherSuperAdmin = await User.exists({
+        _id: { $ne: user._id },
+        isAdmin: true,
+        adminRole: 'superadmin'
+      });
+      if (!anotherSuperAdmin) {
+        return res.status(400).json({ error: 'At least one superadmin must remain' });
       }
+    }
+    ['isBanned', 'banReason', 'isAdmin', 'adminRole'].forEach((field) => {
+      if (update[field] !== undefined) user[field] = update[field];
     });
     
     // Resource modification
-    if (req.body.resources && req.body.planetIndex !== undefined) {
-      const planet = user.planets[req.body.planetIndex];
-      if (planet) {
-        Object.assign(planet.resources, req.body.resources);
-      }
+    if (update.resources) {
+      const planet = user.planets[update.planetIndex];
+      planet.resources = { ...planet.resources.toObject(), ...update.resources };
+      user.markModified('planets');
     }
     
     await user.save();
@@ -187,7 +198,7 @@ router.put('/users/:userId', superAdminMiddleware, async (req, res) => {
     if (user.socketId) {
       try {
         const settled = await settleUserState(user._id, new Date());
-        io.to(user.socketId).emit('planetData', settled.snapshot);
+        afterCommit(() => io.to(`user:${user._id}`).emit('planetData', settled.snapshot));
       } catch (err) {
         console.error('[Admin] Failed to sync user data via socket:', err);
       }
@@ -195,9 +206,10 @@ router.put('/users/:userId', superAdminMiddleware, async (req, res) => {
     
     res.json({ message: 'User updated', user });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
+    res.status(error.statusCode || 500).json({ error: error.message });
   }
-});
+}));
 
 // Delete user
 router.delete('/users/:userId', superAdminMiddleware, async (req, res) => {
@@ -263,7 +275,7 @@ router.get('/logs', adminMiddleware, async (req, res) => {
 });
 
 // Add resources to user
-router.post('/users/:userId/resources', adminMiddleware, async (req, res) => {
+router.post('/users/:userId/resources', adminMiddleware, transactionalRoute(async (req, res) => {
   try {
     const { resourceType, amount, planetIndex = 0 } = req.body;
     const user = await User.findById(req.params.userId);
@@ -294,9 +306,10 @@ router.post('/users/:userId/resources', adminMiddleware, async (req, res) => {
       resources: planet.resources
     });
   } catch (error) {
+    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // ─── Entity Base Config ───────────────────────────────────────────────────────
 

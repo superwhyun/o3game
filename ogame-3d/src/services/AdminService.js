@@ -4,8 +4,9 @@ import { socketService } from './SocketService.js';
 const API_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
 
 class AdminService {
-  constructor() {
-    this.token = localStorage.getItem('token');
+  // Read the token per request: it changes on login/logout without a reload.
+  get token() {
+    return apiService.token || localStorage.getItem('token');
   }
   
   getHeaders() {

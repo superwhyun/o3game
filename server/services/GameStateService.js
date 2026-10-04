@@ -1,3 +1,4 @@
+const { atomic } = require('./transactions');
 const BuildingQueue = require('../models/BuildingQueue');
 const FleetMovement = require('../models/FleetMovement');
 const GameConfig = require('../models/GameConfig');
@@ -48,6 +49,12 @@ function formatFleetMovement(movement, now = new Date()) {
 
   return {
     id: movement._id,
+    formationId: movement.formationId,
+    requestId: movement.requestId,
+    scoutReportId: movement.scoutReportId,
+    formationName: movement.formationNameAtLaunch || '기존 임무',
+    initialFleet: movement.initialFleet,
+    notice: movement.notice,
     mission: movement.mission,
     status: movement.status,
     fleet: movement.fleet,
@@ -225,6 +232,9 @@ function buildGameSnapshot(user, { config, now, queueState, fleetMovements, comp
     email: user.email,
     isAdmin: user.isAdmin,
     currentPlanet: currentPlanetIndex,
+    stateRevision: user.stateRevision || 0,
+    fleetFormations: (user.fleetFormations || []).map(f => ({ ...f.toObject(), id: f._id })),
+    unassignedShips: require('../utils/formationRules').availableShips(user, currentPlanet._id),
     planets: user.planets.map((planet) => buildPlanetSnapshot(planet, config)),
     research,
     queueState,
@@ -236,11 +246,9 @@ function buildGameSnapshot(user, { config, now, queueState, fleetMovements, comp
   };
 }
 
-async function settleUserState(userOrId, now = new Date()) {
+async function settleUserStateInternal(userOrId, now = new Date()) {
   try {
-    const user = typeof userOrId === 'string' || userOrId.constructor?.name === 'ObjectId'
-      ? await User.findById(userOrId)
-      : userOrId;
+    const user = await User.findById(userOrId?._id || userOrId);
 
     if (!user) return null;
 
@@ -267,9 +275,13 @@ async function settleUserState(userOrId, now = new Date()) {
       snapshot: buildGameSnapshot(user, { config, now, queueState, fleetMovements, completedQueues })
     };
   } catch (error) {
-    console.error(`[GameStateService.settleUserState] Error for user ${userOrId}:`, error);
+    if (!error.hasErrorLabel?.('TransientTransactionError')) console.error(`[GameStateService.settleUserState] Error for user ${userOrId}:`, error.message);
     throw error;
   }
+}
+
+async function settleUserState(userOrId, now = new Date()) {
+  return atomic(() => settleUserStateInternal(userOrId, now));
 }
 
 async function settleUsersWithDueQueues(now = new Date()) {
@@ -288,6 +300,7 @@ module.exports = {
   buildGameSnapshot,
   buildQueueState,
   formatQueueItem,
+  formatFleetMovement,
   settleUserState,
   settleUsersWithDueQueues,
   activateNextQueues

@@ -28,6 +28,7 @@ class ApiService {
   }
   
   async request(endpoint, options = {}) {
+    const authToken = this.token;
     const url = `${API_URL}${endpoint}`;
     
     const response = await fetch(url, {
@@ -39,9 +40,10 @@ class ApiService {
     });
     
     const data = await response.json();
+    if (this.token !== authToken) throw Object.assign(new Error('로그인 상태가 변경되었습니다.'), {status:401,code:'AUTH_CHANGED'});
     
     if (!response.ok) {
-      throw new Error(data.error || 'Request failed');
+      throw Object.assign(new Error(data.error || 'Request failed'), { status: response.status, code: data.code });
     }
     
     return data;
@@ -139,12 +141,17 @@ class ApiService {
     });
   }
   
-  // Build ship
-  async buildShip(shipId, count = 1, planetId = '0') {
+  // Build ship (entityType 'defense' queues a defense structure instead)
+  async buildShip(shipId, count = 1, planetId = '0', entityType = 'ship') {
     return this.request('/api/queue/ship', {
       method: 'POST',
-      body: JSON.stringify({ shipId, count, planetId })
+      body: JSON.stringify({ shipId, count, planetId, entityType })
     });
+  }
+
+  // Entity catalog (buildings, research, ships, defense)
+  async getCatalog() {
+    return this.request('/api/game/catalog');
   }
   
   // Check if build is complete
@@ -170,12 +177,25 @@ class ApiService {
     return this.request('/api/game/fleets');
   }
 
-  async launchFleet({ mission, fleet, cargo, destination, speed = 100 }) {
-    return this.request('/api/game/fleets', {
-      method: 'POST',
-      body: JSON.stringify({ mission, fleet, cargo, destination, speed })
-    });
+  async launchFleet(order) {
+    return this.request('/api/game/fleets', { method: 'POST', body: JSON.stringify(order) });
   }
+  async getFleetRequest(requestId) { return this.request(`/api/game/fleet-requests/${requestId}`); }
+  async getFleetFormations() { return this.request('/api/game/fleet-formations'); }
+  async createFormation(originPlanetId) {
+    return this.request('/api/game/fleet-formations', { method:'POST', body:JSON.stringify({originPlanetId}) });
+  }
+  async saveFormation(id, input) {
+    return this.request(`/api/game/fleet-formations/${id}`, { method:'PATCH', body:JSON.stringify(input) });
+  }
+  async deleteFormation(id, expectedRevision) {
+    return this.request(`/api/game/fleet-formations/${id}`, { method:'DELETE', body:JSON.stringify({expectedRevision}) });
+  }
+
+  async launchScout(order) { return this.request('/api/game/scouts', {method:'POST',body:JSON.stringify(order)}); }
+  async getScoutReports(query={}) { return this.request('/api/game/scout-reports?'+new URLSearchParams(query)); }
+  async getScoutAlerts(query={}) { return this.request('/api/game/scout-alerts?'+new URLSearchParams(query)); }
+  async getScoutReport(id) { return this.request('/api/game/scout-reports/'+encodeURIComponent(id)); }
 
   async getBattleReports() {
     return this.request('/api/game/reports');

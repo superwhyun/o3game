@@ -1,0 +1,372 @@
+/* ==========================================================================
+   Fleet strike map (작전 지도): orbit chart + strike group + course arrow.
+   Shares orbit styles with src/ui/galaxy.css. Tokens come from /style.css
+   ========================================================================== */
+
+.strike-map {
+  border-bottom: 1px solid var(--line);
+  transition: opacity var(--duration);
+}
+
+.strike-map.is-loading {
+  opacity: 0.6;
+}
+
+.strike-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 22px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.strike-head .block-title {
+  margin: 0;
+}
+
+.strike-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  min-height: 520px;
+}
+
+.strike-body .orbit-host {
+  min-height: 520px;
+}
+
+.strike-side {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--panel-solid);
+}
+
+/* Strike group */
+.squad {
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.squad .block-title {
+  margin: 0;
+}
+
+.squad-list {
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.squad-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 4px 0;
+  border: 1px solid var(--line);
+  background: var(--ink-0);
+  transition: border-color var(--duration-fast);
+}
+
+.squad-row.is-picked {
+  border-color: var(--gold-dim);
+}
+
+.squad-row img {
+  width: 56px;
+  height: 36px;
+  object-fit: cover;
+}
+
+.squad-name {
+  display: grid;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.squad-name small {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.squad-stepper {
+  display: flex;
+  align-items: center;
+}
+
+.squad-stepper button {
+  width: 28px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--text-md);
+  line-height: 1;
+}
+
+.squad-stepper button:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold-dim);
+}
+
+.squad-stepper input {
+  width: 52px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-inline: 0;
+  background: var(--ink-1);
+  color: var(--gold-bright);
+  text-align: center;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.squad-stepper input:focus {
+  outline: none;
+  background: var(--ink-2);
+}
+
+.squad-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.squad-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.squad-summary > div {
+  display: grid;
+  padding: 6px 10px;
+  background: var(--panel-solid);
+}
+
+.squad-summary dt {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.squad-summary dd {
+  font-size: var(--text-md);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The draggable squad token */
+.squad-token {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  color: var(--text-faint);
+  text-align: left;
+  touch-action: none;
+  user-select: none;
+  cursor: not-allowed;
+  transition: border-color var(--duration-fast), background var(--duration-fast), transform var(--duration-fast);
+}
+
+.squad-token.is-ready {
+  cursor: grab;
+  border: 1px solid var(--gold-dim);
+  background: linear-gradient(135deg, rgba(200, 169, 106, 0.16), rgba(200, 169, 106, 0.03));
+  color: var(--text);
+}
+
+.squad-token.is-ready:hover {
+  border-color: var(--gold);
+}
+
+.is-plotting-course,
+.is-plotting-course .squad-token {
+  cursor: grabbing !important;
+}
+
+.is-plotting-course {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.is-plotting-course .squad-token {
+  transform: scale(0.98);
+  border-color: var(--gold-bright);
+}
+
+.token-emblem {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: 1px solid currentColor;
+  transform: rotate(45deg);
+  color: var(--gold);
+  font-size: var(--text-md);
+}
+
+.squad-token:not(.is-ready) .token-emblem {
+  color: var(--text-faint);
+}
+
+.token-text {
+  display: grid;
+  line-height: 1.35;
+}
+
+.token-text strong {
+  font-family: var(--font-serif);
+  font-size: var(--text-md);
+  color: inherit;
+}
+
+.squad-token.is-ready .token-text strong {
+  color: var(--gold-bright);
+}
+
+.token-text small {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+
+/* Drop feedback on the chart */
+.slot.is-drop-valid .slot-ring {
+  opacity: 1;
+  stroke: var(--gold-bright);
+  stroke-width: 2.5;
+}
+
+.slot.is-drop-invalid .slot-ring {
+  opacity: 1;
+  stroke: var(--alert);
+  stroke-dasharray: 3 4;
+}
+
+/* Confirmation card */
+.strike-confirm {
+  padding: 16px 18px 18px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(200, 169, 106, 0.06), transparent);
+}
+
+.strike-confirm[hidden] {
+  display: none;
+}
+
+.confirm-mission {
+  margin-top: 12px;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.confirm-actions .cmd-btn {
+  flex: 1;
+}
+
+/* Course arrow overlay (appended to <body>) */
+.course-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1200;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.course-line,
+.course-glow {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.course-line {
+  stroke-width: 2.5;
+  stroke-dasharray: 10 7;
+  animation: course-march 0.9s linear infinite;
+}
+
+.course-glow {
+  stroke-width: 10;
+  stroke-opacity: 0.16;
+}
+
+@keyframes course-march {
+  to { stroke-dashoffset: -17; }
+}
+
+.course-overlay[data-state="valid"] .course-line,
+.course-overlay[data-state="valid"] .course-glow { stroke: var(--gold-bright); }
+.course-overlay[data-state="invalid"] .course-line,
+.course-overlay[data-state="invalid"] .course-glow { stroke: var(--alert); }
+.course-overlay[data-state="idle"] .course-line,
+.course-overlay[data-state="idle"] .course-glow { stroke: var(--text-dim); }
+
+.course-head.course-valid { fill: var(--gold-bright); }
+.course-head.course-invalid { fill: var(--alert); }
+.course-head.course-idle { fill: var(--text-dim); }
+
+.course-origin {
+  fill: var(--ink-0);
+  stroke: var(--gold);
+  stroke-width: 2;
+}
+
+.course-label rect {
+  fill: rgba(5, 7, 12, 0.92);
+  stroke: var(--line-strong);
+}
+
+.course-overlay[data-state="valid"] .course-label rect { stroke: var(--gold-dim); }
+
+.course-label text {
+  fill: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  text-anchor: middle;
+}
+
+.course-overlay[data-state="valid"] .course-label text { fill: var(--gold-bright); }
+.course-overlay[data-state="invalid"] .course-label text { fill: #e8a395; }
+
+@media (max-width: 900px) {
+  .strike-body {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .strike-body .orbit-host {
+    min-height: 300px;
+  }
+
+  .strike-side {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .strike-head {
+    padding-inline: 14px;
+  }
+
+  .squad,
+  .strike-confirm {
+    padding-inline: 14px;
+  }
+}

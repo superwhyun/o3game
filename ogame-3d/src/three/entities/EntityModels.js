@@ -498,6 +498,17 @@ function engine(k, kind) {
   }
 }
 export const EXPERIMENTS = {
+  terraforming(k) {
+    k.ball(1.25, 0, 1.45, 0, 'blue');
+    for(let i=0;i<5;i++) {
+      const a=i*Math.PI*2/5;
+      const patch=k.ball(.35, Math.cos(a), 1.7+Math.sin(a)*.3, Math.sin(a)*.6, 'light'); patch.scale.set(1,.4,.7);
+      k.tower(Math.cos(a)*2.2,Math.sin(a)*2.2,.8,.14);
+      k.pipe([Math.cos(a)*2.2,.6,Math.sin(a)*2.2],[0,.5,0],.035,'gold');
+    }
+    k.ring(1.65,.045,0,1.4,0,'gold','y');
+    k.mesh(new THREE.SphereGeometry(1.8,24,12,0,Math.PI*2,0,Math.PI/2),'field',0,.25,0);
+  },
   energyTechnology(k) {
     k.cyl(0.7, 1.7, 0, 1.05, 0, 'steel');
     k.ball(0.65, 0, 2, 0, 'light');

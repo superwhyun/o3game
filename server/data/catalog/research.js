@@ -6,7 +6,8 @@
 
 module.exports = [
   {
-    id: 'terraforming', name: '테라포밍', icon: '🌱', category: 'basic',
+    id: 'terraforming',
+    model: { kind: 'research', archetype: 'terraforming', styleVersion: 1 }, name: '테라포밍', icon: '🌱', category: 'basic',
     description: '모든 소유 행성의 가용률을 단계당 2%p 늘립니다. 최대 30레벨, 가용률 상한 100%.',
     cost: { metal: 100000, crystal: 150000, deuterium: 100000 },
     costMultiplier: 1.6, buildTime: 7200,

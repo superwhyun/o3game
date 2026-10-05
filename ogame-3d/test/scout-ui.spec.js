@@ -149,7 +149,9 @@ test("three clicks, information report, return, empty orbit and reload", async (
   await page.reload();
   await page.locator('.holo-btn[data-view="galaxy"]').click();
   await page.locator('.slot-row[data-slot="9"]').click();
-  await expect(page.locator(".scout-panel")).toContainText("빈 궤도 관측");
+  await expect(page.locator(".scout-panel")).toContainText("미점령 행성 · 개척 조사");
+  await page.locator('.scout-panel details summary').first().click();
+  await expect(page.locator('.scout-panel .scout-terrain')).toContainText('자연 상태 사용 불가');
   await page.locator('.holo-btn[data-view="combat"]').click();
   await page.locator("#scout-reports > summary").click();
   await expect(

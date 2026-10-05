@@ -256,6 +256,10 @@ async function processMovement(id, now = new Date()) {
         });
       if (report.intercepted) report.survivorCount = 0;
     }
+    if (["empty", "occupied", "friendly"].includes(report.outcome)) {
+      const { environmentOf, surveyOf } = require("../utils/colonizationRules");
+      report.sections = { ...report.sections, environment: surveyOf(planet || environmentOf(movement.destination), owner.terraformingLevel || 0) };
+    }
     await report.save();
     movement.scoutReportId = report._id;
     movement.targetUserId = report.targetUserId;
@@ -263,7 +267,7 @@ async function processMovement(id, now = new Date()) {
     movement.notice = report.intercepted
       ? "정보 전송 후 정찰선이 격추되었습니다."
       : report.outcome === "empty"
-        ? "빈 궤도 관측 완료 · 귀환 중"
+        ? "미점령 행성 지형 관측 완료 · 귀환 중"
         : report.outcome === "unavailable"
           ? "관측 대상 확인 불가 · 귀환 중"
           : "정찰 정보 전송 완료 · 귀환 중";

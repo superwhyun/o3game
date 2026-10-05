@@ -157,7 +157,9 @@ test(
       await fleets.processMovement(empty._id, new Date(+empty.arrivalTime + 1));
       const emptyReport = await Report.findOne({ movementId: empty._id });
       assert.equal(emptyReport.outcome, "empty");
-      assert.deepEqual(emptyReport.sections, {});
+      assert.deepEqual(Object.keys(emptyReport.sections), ["environment"]);
+      const { surveyOf, environmentOf } = require("../utils/colonizationRules");
+      assert.deepEqual(emptyReport.sections.environment, surveyOf(environmentOf(order(9).destination), a.terraformingLevel));
       // Reservation protects five probes; exactly two of three fresh clicks can use the remaining two.
       let latest = await User.findById(a._id);
       latest.fleetFormations.push({

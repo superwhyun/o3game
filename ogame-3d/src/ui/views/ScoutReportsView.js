@@ -18,6 +18,19 @@ function section(title, values, type) {
       : '<p class="scout-locked">미확인 · 더 높은 첩보 기술이 필요합니다.</p>'
   }</section>`;
 }
+function terrainSection(info) {
+  if (!info) return '<p class="scout-locked">지형 정보 없음 · 다시 정찰하면 개척 정보를 확인할 수 있습니다.</p>';
+  const rows = [
+    ['행성 지름', `${formatAmount(info.diameter)} km`],
+    ['온도', `${info.minTemp} ~ ${info.maxTemp} °C`],
+    ['전체 면적', `${formatAmount(info.total)}칸`],
+    ['자연 상태 사용 가능', `${formatAmount(info.usable)}칸 (${info.baseUsablePercent}%)`],
+    ['자연 상태 사용 불가', `${formatAmount(info.unusable)}칸`],
+    [`내 테라포밍 Lv.${info.terraformingLevel} 적용 시`, `${formatAmount(info.prospectiveUsable)}칸 사용 가능`],
+    ...Object.entries(info.production || {}).map(([key, value]) => [{ metal: '금속 생산', crystal: '수정 생산', deuterium: '중수소 생산', solar: '태양광 발전' }[key] || key, `${Math.round(value * 100)}%`]),
+  ];
+  return `<section class="scout-information scout-terrain"><h5>지형·개척 기초정보</h5><dl>${rows.map(([label, value]) => `<div><dt>${e(label)}</dt><dd>${e(value)}</dd></div>`).join('')}</dl><p class="detail-muted">면적은 건물 레벨이 사용하는 건설 칸입니다. 사용 불가 지형은 테라포밍으로 개선할 수 있습니다. 점령자의 건설 사용량은 포함하지 않습니다.</p></section>`;
+}
 export function reportCard(report, position) {
   const stale =
     position &&
@@ -25,12 +38,12 @@ export function reportCard(report, position) {
       String(position.planet?.id || "") ||
       report.targetCommander !== position.planet?.username);
   const title = {
-    empty: "빈 궤도 관측",
+    empty: "미점령 행성 · 개척 조사",
     occupied: report.targetName || "행성 관측",
     friendly: "현재 아군 행성",
     unavailable: "관측 대상 확인 불가",
   }[report.outcome];
-  return `<article class="scout-report" data-scout-report="${e(report.id)}"><header><div><span class="scout-eyebrow">${e(coord(report.destination))} · ${report.informationTier ? `정보 ${report.informationTier}단계` : "관측 완료"}</span><h4>${e(title)}</h4></div><span class="scout-result ${report.intercepted ? "is-lost" : ""}">${report.intercepted ? "격추" : report.detected ? "탐지됨" : "미탐지"}</span></header><p class="scout-observed">${e(new Date(report.observedAt).toLocaleString("ko-KR"))} 관측 · <span data-observed-time="${e(report.observedAt)}"></span>${stale ? " · 이전 점령 상태의 관측" : ""}</p>${report.targetCommander ? `<p>당시 사령관 · ${e(report.targetCommander)}</p>` : ""}<details data-report-id="${e(report.id)}"><summary>관측 정보 보기</summary>${report.outcome === "occupied" ? section("자원", report.sections.resources) + section("주둔 함선", report.sections.fleet, "ship") + section("방어시설", report.sections.defense, "defense") + section("건물", report.sections.buildings, "building") + section("연구", report.sections.research, "research") : `<p>${report.outcome === "empty" ? "도착 당시 미점령 상태입니다." : report.outcome === "friendly" ? "도착 당시 아군 행성으로 확인했습니다." : "점령 정보가 충돌해 상세 관측을 하지 않았습니다."}</p>`}<p class="scout-survivors">정찰선 ${report.initialProbeCount}척 출격 · ${report.survivorCount}척 생존${report.intercepted ? " · 정보 전송 후 격추" : " · 귀환 임무와 별도로 기록됩니다."}</p></details></article>`;
+  return `<article class="scout-report" data-scout-report="${e(report.id)}"><header><div><span class="scout-eyebrow">${e(coord(report.destination))} · ${report.informationTier ? `정보 ${report.informationTier}단계` : "관측 완료"}</span><h4>${e(title)}</h4></div><span class="scout-result ${report.intercepted ? "is-lost" : ""}">${report.intercepted ? "격추" : report.detected ? "탐지됨" : "미탐지"}</span></header><p class="scout-observed">${e(new Date(report.observedAt).toLocaleString("ko-KR"))} 관측 · <span data-observed-time="${e(report.observedAt)}"></span>${stale ? " · 이전 점령 상태의 관측" : ""}</p>${report.targetCommander ? `<p>당시 사령관 · ${e(report.targetCommander)}</p>` : ""}<details data-report-id="${e(report.id)}"><summary>관측 정보 보기</summary>${terrainSection(report.sections?.environment)}${report.outcome === "occupied" ? section("자원", report.sections.resources) + section("주둔 함선", report.sections.fleet, "ship") + section("방어시설", report.sections.defense, "defense") + section("건물", report.sections.buildings, "building") + section("연구", report.sections.research, "research") : `<p>${report.outcome === "empty" ? "도착 당시 미점령 상태입니다." : report.outcome === "friendly" ? "도착 당시 아군 행성으로 확인했습니다." : "점령 정보가 충돌해 상세 관측을 하지 않았습니다."}</p>`}<p class="scout-survivors">정찰선 ${report.initialProbeCount}척 출격 · ${report.survivorCount}척 생존${report.intercepted ? " · 정보 전송 후 격추" : " · 귀환 임무와 별도로 기록됩니다."}</p></details></article>`;
 }
 export class ScoutReportsView {
   constructor(root, { controller, state, onNavigate, onMissions }) {

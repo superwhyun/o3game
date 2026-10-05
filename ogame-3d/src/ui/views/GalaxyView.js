@@ -5,7 +5,7 @@ import { escapeHtml } from '../dom.js';
 import { OrbitChart, relationOf } from './OrbitChart.js';
 import { bindSystemNav, clampCoords } from './systemNav.js';
 
-const RELATION_LABEL = { own: '아군', other: '타 제국', empty: '빈 궤도' };
+const RELATION_LABEL = { own: '아군', other: '타 제국', empty: '미점령 행성' };
 
 export class GalaxyView {
   /**
@@ -93,7 +93,7 @@ export class GalaxyView {
   renderList() {
     this.listEl.innerHTML = this.data.positions.map((position) => {
       const relation = relationOf(position);
-      const title = position.planet ? escapeHtml(position.planet.name) : '빈 궤도';
+      const title = position.planet ? escapeHtml(position.planet.name) : '미점령 행성';
       const owner = position.planet ? escapeHtml(position.planet.username) : '';
       return `<li><button type="button" class="slot-row slot-${relation} ${position.position === this.selected ? 'is-selected' : ''}"
           data-slot="${position.position}" aria-pressed="${position.position === this.selected}">
@@ -115,12 +115,12 @@ export class GalaxyView {
     const action = {
       own: '<button type="button" class="cmd-btn" disabled>아군 행성</button>',
       other: '<button type="button" class="cmd-btn primary" data-action="target">작전 목표 지정</button>',
-      empty: '<button type="button" class="cmd-btn" disabled>식민 (준비 중)</button>'
+      empty: '<button type="button" class="cmd-btn primary" data-action="target">개척 함대 선택</button>'
     }[relation];
 
     this.detailEl.innerHTML = `
       <p class="detail-kicker">[${galaxy}:${system}:${position.position}] · 제${position.position}궤도</p>
-      <h3 class="slot-detail-title">${position.planet ? escapeHtml(position.planet.name) : '빈 궤도'}</h3>
+      <h3 class="slot-detail-title">${position.planet ? escapeHtml(position.planet.name) : '미점령 행성'}</h3>
       <dl class="spec-list single">
         <div class="spec-row"><dt>관계</dt><dd class="rel-${relation}">${RELATION_LABEL[relation]}</dd></div>
         ${position.planet ? `

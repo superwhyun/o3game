@@ -180,6 +180,11 @@ class ApiService {
     return this.request(`/api/game/galaxy?${query.toString()}`);
   }
 
+  async getGalaxyTraffic(galaxy, system, options = {}) {
+    const query = new URLSearchParams({ galaxy: String(galaxy), system: String(system), ...options });
+    return this.request(`/api/game/galaxy/traffic?${query}`);
+  }
+
   async getFleetMovements() {
     return this.request('/api/game/fleets');
   }

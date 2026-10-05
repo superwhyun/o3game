@@ -1,0 +1,54 @@
+import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const mongoose = require('../../server/node_modules/mongoose');
+const uri = process.env.FLEET_UI_MONGODB_URI;
+test.skip(!uri, 'Dedicated UI test DB required');
+test.describe.configure({ mode: 'serial' });
+let fixture;
+test.beforeAll(async () => { if (!/\/cosmic_fleet_ui_test(\?|$)/.test(uri)) throw Error('Dedicated UI test DB required'); await mongoose.connect(uri); });
+test.beforeEach(async () => {
+ execFileSync(process.execPath, ['server/scripts/seedFleetPreview.js'], { cwd: new URL('../../', import.meta.url), env: { ...process.env, FLEET_PREVIEW_URI: uri, JWT_SECRET: 'isolated-fleet-preview-secret-not-for-production-2026' } });
+ fixture = JSON.parse(readFileSync('/tmp/oogame-fleet-preview.json', 'utf8'));
+});
+test.afterAll(async () => { await mongoose.disconnect(); });
+async function login(page, auth = fixture) {
+ await page.addInitScript(({ token, user }) => { localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(user)); }, auth);
+ await page.goto('/'); await page.locator('.holo-btn[data-view="galaxy"]').click();
+}
+test('map draws colored internal, external and return arrows without blocking planet selection', async ({ page }) => {
+ const User = require('../../server/models/User'), Movement = require('../../server/models/FleetMovement');
+ const other = await User.findOne({ username: 'target_ui_test' });
+ const now = Date.now(), origin = { galaxy: 1, system: 1, planet: 4 }, destination = { galaxy: 1, system: 1, planet: 8 }, remote = { galaxy: 2, system: 17, planet: 12 };
+ const base = { userId: other._id, username: other.username, mission: 'transport', origin, destination, startTime: new Date(now), arrivalTime: new Date(now + 600000) };
+ await Movement.insertMany([base, { ...base }, { ...base, userId: fixture.user.id, username: fixture.user.username, origin: destination, destination: origin }, { ...base, origin: remote }, { ...base, destination: remote, status: 'returning', returnStartTime: new Date(now), returnTime: new Date(now + 600000) }]);
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await login(page);
+ await expect(page.locator('.traffic-course')).toHaveCount(4);
+ await expect(page.locator('.traffic-course.is-returning')).toHaveCount(1);
+ await expect(page.locator('.traffic-external')).toHaveText('[2:17] 성계');
+ await expect(page.locator('[data-traffic-count]')).toHaveText('5 / 5');
+ const response = await page.request.get('http://localhost:3999/api/game/galaxy/traffic?galaxy=1&system=1', { headers: { Authorization: `Bearer ${fixture.token}` } });
+ const data = await response.json();
+ expect(data.routes.some(r=>r.count===2)).toBeTruthy();
+ expect(data.routes.filter(r=>!r.isSelf).every(r=>!('fleet' in r)&&!('mission' in r))).toBeTruthy();
+ await page.locator('.slot-row[data-slot="8"]').click();
+ await expect(page.locator('.slot-detail')).toContainText('하이네센');
+ await expect(page.locator('.traffic-course')).toHaveCount(4);
+ await page.locator('[data-traffic-filter]').selectOption('self');
+ await expect(page.locator('.traffic-course')).toHaveCount(1);
+ await expect(page.locator('.traffic-course')).toHaveAttribute('stroke','#54e0d2');
+ await page.locator('[data-traffic-filter]').selectOption('all');
+ await page.locator('.traffic-list summary').click();
+ await page.locator('[data-traffic-route]').first().focus();await page.keyboard.press('Enter');
+ await expect(page.locator('.traffic-detail')).toBeVisible();
+ await page.screenshot({ path: '../artifacts/fleet-ui/traffic-desktop.png' });
+ await page.setViewportSize({width:390,height:844});
+ await page.locator('[data-traffic-filter]').selectOption('others');
+ await expect(page.locator('.traffic-course')).toHaveCount(3);
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({ path: '../artifacts/fleet-ui/traffic-mobile.png' });
+ expect(errors).toEqual([]);
+});

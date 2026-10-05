@@ -405,3 +405,45 @@
     width: 52px;
   }
 }
+
+/* Observable fleet routes share the chart coordinate system, below planet hit targets. */
+.traffic-course { fill:none;stroke-width:2;opacity:.65;pointer-events:none; }
+.traffic-course.is-returning { stroke-dasharray:7 5; }
+.traffic-course.is-selected { stroke-width:3.5;opacity:1; }
+.traffic-hit { fill:none;stroke:transparent;stroke-width:14;pointer-events:stroke;cursor:pointer; }
+.traffic-hit:focus { outline:none;stroke:rgba(255,255,255,.22); }
+.traffic-token,.traffic-bundle { pointer-events:none; }
+.traffic-token { stroke:var(--ink-0);stroke-width:1.5; }
+.traffic-bundle { font-size:14px;font-weight:700; }
+.traffic-external { pointer-events:none; }
+.traffic-external rect { fill:var(--ink-1);stroke:var(--line-strong); }
+.traffic-external text { fill:var(--text-dim);font-size:13px; }
+.fleet-traffic { padding:14px;border-top:1px solid var(--line); }
+.fleet-traffic header { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap; }
+.fleet-traffic header strong { font-size:var(--text-sm);color:var(--text); }
+.fleet-traffic header label { display:flex;align-items:center;gap:8px;font-size:var(--text-xs); }
+.fleet-traffic select { background:var(--ink-1);color:var(--text);border:1px solid var(--line-strong);padding:8px;min-height:44px;max-width:100%; }
+.traffic-status { font-size:var(--text-xs);color:var(--text-faint);margin:8px 0; }
+.traffic-status.is-stale { color:#f4ad68; }
+.traffic-owners { display:flex;gap:8px 16px;flex-wrap:wrap;font-size:var(--text-xs); }
+.traffic-owners span { display:flex;align-items:center;gap:6px; }
+.fleet-traffic i { width:9px;height:9px;display:inline-block;border-radius:50%;background:var(--traffic-color);flex-shrink:0; }
+.traffic-list { margin-top:10px; }
+.traffic-list summary { cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--text-dim);font-size:var(--text-sm); }
+[data-traffic-routes] { max-height:270px;overflow:auto; }
+[data-traffic-route] { display:flex;align-items:center;gap:10px;width:100%;min-height:52px;text-align:left;padding:9px;background:transparent;border:1px solid var(--line);color:var(--text); }
+[data-traffic-route] span { flex:1;min-width:0;overflow-wrap:anywhere; }
+[data-traffic-route] small { display:block;color:var(--text-dim);margin-top:3px; }
+[data-traffic-route][aria-pressed=true] { border-color:var(--traffic-color);background:var(--ink-1); }
+[data-traffic-route] b { font-size:var(--text-xs);white-space:nowrap; }
+.traffic-detail { margin-top:12px;padding:12px;background:var(--ink-1);border:1px solid var(--line-strong); }
+.traffic-detail h4 { margin:0 0 8px; }
+.traffic-detail p { font-size:var(--text-sm);margin:6px 0; }
+.traffic-individual { display:flex;gap:12px;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px; }
+@media(max-width:600px) { .fleet-traffic { padding:10px; } .fleet-traffic header label { width:100%; } .fleet-traffic select { flex:1; } [data-traffic-route] { font-size:12px; } }
+.galaxy-chart-column { min-width:0;min-height:0;overflow-y:auto; }
+.galaxy-chart-column > .orbit-host { aspect-ratio:1000/740;min-height:300px;height:auto; }
+@media(max-width:900px) {
+ .galaxy-chart-column { overflow:visible; }
+ .galaxy-chart-column > .orbit-host { aspect-ratio:auto;min-height:0; }
+}

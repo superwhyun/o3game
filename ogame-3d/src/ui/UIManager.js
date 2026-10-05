@@ -716,6 +716,7 @@ export class UIManager {
         void scouts.selectTarget({...coords,planet:position.position});
         this.updateScoutUI();
       },
+      fetchTraffic: (galaxy, system) => apiService.getGalaxyTraffic(galaxy, system),
       fetchSystem: (galaxy, system) => apiService.getGalaxySystem(galaxy, system),
       getHome: () => ({ galaxy: gameState.planet.galaxy, system: gameState.planet.system }),
       onTarget: (target) => {

@@ -176,6 +176,7 @@ export class OrbitChart {
     this.caption.querySelector('strong').textContent = `星系 [${galaxy}:${system}]`;
     this.caption.querySelector('span').textContent = `궤도 ${POSITION_COUNT} · 점유 ${this.positions.filter((p) => p.occupied).length}`;
     this.setHighlight(this.highlight?.slot, this.highlight?.state);
+    this.onRender?.();
     this.place(this.elapsed());
   }
 
@@ -208,14 +209,19 @@ export class OrbitChart {
     if (!this.slotEls || !this.coords) return;
     const { galaxy, system } = this.coords;
     const phase = hash01(`${galaxy}:${system}`) * Math.PI * 2;
+    this.slotPoints = new Map();
     for (const el of this.slotEls) {
       const slot = Number(el.dataset.slot);
       const { rx, ry } = orbitRadius(slot);
       const angle = phase + slot * GOLDEN_ANGLE + (time * BASE_SPEED) / Math.sqrt(slot);
       const depth = 0.88 + 0.12 * ((Math.sin(angle) + 1) / 2);
+      this.slotPoints.set(slot, { x: VIEW.cx + Math.cos(angle) * rx, y: VIEW.cy + Math.sin(angle) * ry });
       el.setAttribute('transform', `translate(${(VIEW.cx + Math.cos(angle) * rx).toFixed(1)} ${(VIEW.cy + Math.sin(angle) * ry).toFixed(1)}) scale(${depth.toFixed(3)})`);
     }
+    this.onPlace?.();
   }
+
+  slotPoint(slot) { return this.slotPoints?.get(slot); }
 
   start() {
     if (this.frame || reducedMotion()) return;

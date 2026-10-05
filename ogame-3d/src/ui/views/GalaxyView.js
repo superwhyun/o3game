@@ -2,6 +2,7 @@
  * Star-system view: orbital chart plus a slot list and a detail card.
  */
 import { escapeHtml } from '../dom.js';
+import { FleetTrafficLayer } from './FleetTrafficLayer.js';
 import { OrbitChart, relationOf } from './OrbitChart.js';
 import { bindSystemNav, clampCoords } from './systemNav.js';
 
@@ -16,25 +17,27 @@ export class GalaxyView {
    * @param {() => { galaxy: number, system: number }} options.getHome
    * @param {(target: { galaxy: number, system: number, planet: number }) => void} options.onTarget
    */
-  constructor({ root, controls, fetchSystem, getHome, onTarget, onSelect }) {
+  constructor({ root, controls, fetchSystem, getHome, onTarget, onSelect, fetchTraffic }) {
     this.root = root;
     this.fetchSystem = fetchSystem;
     this.getHome = getHome;
     this.onTarget = onTarget;
     this.onSelect = onSelect;
+    this.fetchTraffic = fetchTraffic;
     this.coords = null;
     this.data = null;
     this.selected = null;
     this.requestId = 0;
 
     this.root.innerHTML = `
-      <div class="orbit-host"></div>
+      <div class="galaxy-chart-column"><div class="orbit-host"></div><section class="traffic-host"></section></div>
       <aside class="orbit-side">
         <article class="slot-detail" aria-live="polite"></article>
         <section class="scout-panel" aria-label="정찰 정보"></section>
         <ol class="slot-list" aria-label="궤도 목록"></ol>
       </aside>`;
     this.chart = new OrbitChart(this.root.querySelector('.orbit-host'), { onSelect: (slot) => this.select(slot) });
+    this.traffic = new FleetTrafficLayer(this.chart, { controlsRoot: this.root.querySelector('.traffic-host') });
     this.listEl = this.root.querySelector('.slot-list');
     this.detailEl = this.root.querySelector('.slot-detail');
     this.scoutEl = this.root.querySelector('.scout-panel');
@@ -73,6 +76,10 @@ export class GalaxyView {
       this.chart.setSystem(next, data.positions, this.selected);
       this.renderList();
       this.renderDetail();
+      if (this.fetchTraffic) {
+        try { const traffic = await this.fetchTraffic(next.galaxy, next.system); if(requestId===this.requestId)this.traffic.update(traffic); }
+        catch(error){if(requestId===this.requestId)this.traffic.setStatus(error.message);}
+      }
     } catch (error) {
       if (requestId !== this.requestId) return;
       this.data = null;

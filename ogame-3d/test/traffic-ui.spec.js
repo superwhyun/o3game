@@ -48,8 +48,13 @@ test('map draws colored internal, external and return arrows without blocking pl
  await page.setViewportSize({width:390,height:844});
  await page.locator('[data-traffic-filter]').selectOption('others');
  await expect(page.locator('.traffic-course')).toHaveCount(3);
+ await expect(page.locator('.traffic-detail')).toBeHidden();
  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({ path: '../artifacts/fleet-ui/traffic-mobile.png' });
+ await page.locator('[data-traffic-filter]').selectOption('self');
+ await page.locator('[data-traffic-route]').click();
+ await page.locator('[data-traffic-missions]').click();
+ await expect(page.locator('#combat-panel')).toBeVisible();
  expect(errors).toEqual([]);
 });
 
@@ -138,4 +143,33 @@ test('late system responses, offline recovery, reduced motion and logout preserv
  expect(await page.evaluate(()=>window.uiManager.galaxyView.trafficController.active)).toBe(false);
  await page.locator('#logout-btn').click();
  expect(await page.evaluate(()=>window.uiManager.galaxyView.traffic.routes.length)).toBe(0);
+});
+
+test('1000 movements remain one bundled route with paged details and no chart accumulation',async({page})=>{
+ const User=require('../../server/models/User'),Movement=require('../../server/models/FleetMovement');
+ const other=await User.findOne({username:'target_ui_test'});
+ const now=Date.now();
+ await Movement.insertMany(Array.from({length:1000},()=>({userId:other._id,username:other.username,mission:'spy',origin:{galaxy:1,system:1,planet:8},destination:{galaxy:1,system:1,planet:4},startTime:new Date(now),arrivalTime:new Date(now+600000)})));
+ await login(page);
+ await expect(page.locator('[data-traffic-count]')).toHaveText('1000 / 1000');
+ await expect(page.locator('.traffic-course')).toHaveCount(1);
+ await page.locator('.traffic-list summary').click();await page.locator('[data-traffic-route]').click();
+ await expect(page.locator('.traffic-individual')).toHaveCount(50);
+ await page.locator('[data-traffic-more]').click();await expect(page.locator('.traffic-individual')).toHaveCount(100);
+ const before=await page.locator('.orbit-host svg *').count();
+ for(let i=0;i<20;i++){
+  await page.locator('.holo-btn[data-view="dashboard"]').click();
+  expect(await page.evaluate(()=>window.uiManager.galaxyView.chart.frame)).toBe(null);
+  await page.locator('.holo-btn[data-view="galaxy"]').click();
+  await expect(page.locator('.traffic-course')).toHaveCount(1);
+ }
+ await expect(page.locator('[data-traffic-count]')).toHaveText('1000 / 1000');
+ expect(await page.locator('.orbit-host svg *').count()).toBe(before);
+ const p95=await page.evaluate(async()=>{
+  const frameTimes=[];let previous=performance.now();
+  for(let i=0;i<90;i++){await new Promise(requestAnimationFrame);const now=performance.now();frameTimes.push(now-previous);previous=now;}
+  frameTimes.sort((a,b)=>a-b);return frameTimes[Math.floor(frameTimes.length*.95)];
+ });
+ console.log('TRAFFIC PERFORMANCE',JSON.stringify({movements:1000,routes:1,svgNodes:before,p95}));
+ expect(p95).toBeLessThan(100);
 });

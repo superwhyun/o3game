@@ -18,7 +18,7 @@ export class GalaxyView {
    * @param {() => { galaxy: number, system: number }} options.getHome
    * @param {(target: { galaxy: number, system: number, planet: number }) => void} options.onTarget
    */
-  constructor({ root, controls, fetchSystem, getHome, onTarget, onSelect, fetchTraffic, getAccount = () => null }) {
+  constructor({ root, controls, fetchSystem, getHome, onTarget, onSelect, fetchTraffic, getAccount = () => null, onMissions }) {
     this.root = root;
     this.fetchSystem = fetchSystem;
     this.getHome = getHome;
@@ -42,6 +42,7 @@ export class GalaxyView {
       controlsRoot: this.root.querySelector('.traffic-host'),
       onSelect: route => this.trafficController.select(route),
       onMore: () => this.trafficController.loadMore(),
+      onMissions,
     });
     this.trafficController = new FleetTrafficController({
       fetchTraffic, getAccount,

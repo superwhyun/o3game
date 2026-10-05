@@ -8,15 +8,17 @@ function node(name, attrs = {}) {
  return el;
 }
 export class FleetTrafficLayer {
- constructor(chart, { onSelect, onMore, controlsRoot } = {}) {
-  this.chart = chart; this.onSelect = onSelect; this.onMore = onMore;
+ constructor(chart, { onSelect, onMore, onMissions, controlsRoot } = {}) {
+  this.chart = chart; this.onSelect = onSelect; this.onMore = onMore; this.onMissions = onMissions;
   this.prefix = `traffic-${++instance}`; this.routes = []; this.filter = 'all'; this.selected = null; this.clockOffset = 0;
   this.root = document.createElement('section'); this.root.className = 'fleet-traffic';
   (controlsRoot || chart.container).appendChild(this.root);
   this.root.innerHTML = `<header><strong>함대 이동 <span data-traffic-count>0</span></strong><label>표시 <select data-traffic-filter aria-label="함대 이동 필터"><option value="all">전체</option><option value="self">내 함대</option><option value="others">다른 사용자</option><option value="incoming">내 행성으로 오는 이동</option></select></label></header><p class="traffic-status" role="status">이동 정보를 불러오는 중…</p><div class="traffic-owners" aria-label="함대 소유자 범례"></div><details class="traffic-list"><summary>항로 목록</summary><div data-traffic-routes></div></details><article class="traffic-detail" hidden></article>`;
   this.statusEl = this.root.querySelector('.traffic-status');
-  this.root.addEventListener('change', ev => { if (ev.target.matches('[data-traffic-filter]')) { this.filter = ev.target.value; this.render(); } });
-  this.root.addEventListener('click', ev => { const item = ev.target.closest('[data-traffic-route]'); if (item) this.select(item.dataset.trafficRoute); if (ev.target.closest('[data-traffic-more]')) this.onMore?.(); });
+  this.root.addEventListener('change', ev => { if (ev.target.matches('[data-traffic-filter]')) { this.filter = ev.target.value;
+    if(this.selected && !this.visibleRoutes().some(r=>r.id===this.selected)){this.selected=null;this.root.querySelector('.traffic-detail').hidden=true;this.onSelect?.(null);}
+    this.render(); } });
+  this.root.addEventListener('click', ev => { const item = ev.target.closest('[data-traffic-route]'); if (item) this.select(item.dataset.trafficRoute); if (ev.target.closest('[data-traffic-more]')) this.onMore?.(); if(ev.target.closest('[data-traffic-missions]'))this.onMissions?.(); });
   chart.onRender = () => this.mount(); chart.onPlace = () => this.tick();
   this.mount();
  }
@@ -59,10 +61,10 @@ export class FleetTrafficLayer {
   this.externalPoints = new Map();
   external.forEach((key,index)=>{
    const side = index%2, row = Math.floor(index/2), rows = Math.ceil(external.length/2);
-   const point = { x: side?920:80, y: 95 + row*450/Math.max(1,rows-1) };
+   const point = { x: side?905:95, y: 95 + row*450/Math.max(1,rows-1) };
    this.externalPoints.set(key, point);
    const group = node('g', { class:'traffic-external', transform:`translate(${point.x} ${point.y})` });
-   group.append(node('rect',{x:-65,y:-13,width:130,height:26,rx:8}));
+   group.append(node('rect',{x:-85,y:-17,width:170,height:34,rx:8}));
    const text=node('text',{ 'text-anchor':'middle',y:5 });text.textContent=`[${key}] 성계`;group.append(text);this.svgGroup.append(group);
   });
   visible.forEach((r,index)=>{
@@ -96,7 +98,7 @@ export class FleetTrafficLayer {
  select(id) {
   this.selected=id;this.render();const r=this.routes.find(r=>r.id===id);if(!r)return;
   const detail=this.root.querySelector('.traffic-detail');detail.hidden=false;
-  detail.innerHTML=`<h4>${e(r.username)} · ${r.status==='returning'?'귀환':'이동'}</h4><p>${e(endpointLabel(r.from))} → ${e(endpointLabel(r.to))}</p><p>${r.count}개 이동 · 도착까지 <b data-traffic-eta="${e(r.endsAt)}"></b></p><div data-traffic-individual><p>개별 이동을 불러오는 중…</p></div>`;
+  detail.innerHTML=`<h4>${e(r.username)} · ${r.status==='returning'?'귀환':'이동'}</h4><p>${e(endpointLabel(r.from))} → ${e(endpointLabel(r.to))}</p><p>${r.count}개 이동 · 도착까지 <b data-traffic-eta="${e(r.endsAt)}"></b></p><div data-traffic-individual><p>개별 이동을 불러오는 중…</p></div>${r.isSelf?'<button type="button" class="cmd-btn" data-traffic-missions>내 임무 상세 보기</button>':''}`;
   this.tick();this.onSelect?.(r);detail.scrollIntoView({block:'nearest',behavior:'auto'});
  }
  showMovements(rows, nextCursor, error='') {

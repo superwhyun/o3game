@@ -21,4 +21,5 @@ test('traffic detail pagination deduplicates IDs and ignores a replaced selectio
  const more=c.loadMore();requests[1].resolve({movements:[{id:'one'},{id:'two'}],nextCursor:null});await more;assert.equal(details.at(-1).length,2);
  const stale=c.select({id:'route-a'}),fresh=c.select({id:'route-b'});
  requests[3].resolve({movements:[{id:'new'}],nextCursor:null});await fresh;requests[2].resolve({movements:[{id:'old'}],nextCursor:null});await stale;assert.equal(details.at(-1)[0].id,'new');
+ await c.select(null);assert.equal(c.route,null);assert.equal(c.rows.length,0);
 });

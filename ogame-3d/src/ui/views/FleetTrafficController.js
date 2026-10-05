@@ -39,7 +39,7 @@ export class FleetTrafficController {
   finally { if (this.pending === request) this.pending = null; }
  }
  async select(route) {
-  this.route = route.id; this.rows = []; this.nextCursor = null; this.detailGeneration++; this.detailPending = false;
+  this.route = route?.id || null; this.rows = []; this.nextCursor = null; this.detailGeneration++; this.detailPending = false;
   await this.loadMore();
  }
  async loadMore() {

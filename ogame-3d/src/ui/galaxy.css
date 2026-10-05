@@ -447,3 +447,14 @@
  .galaxy-chart-column { overflow:visible; }
  .galaxy-chart-column > .orbit-host { aspect-ratio:auto;min-height:0; }
 }
+.traffic-external text { fill:var(--text);font-size:18px; }
+.traffic-owners span { max-width:100%;overflow-wrap:anywhere; }
+@media(max-width:900px) {
+ .galaxy-holo { grid-template-rows:auto auto;align-content:start; }
+ .galaxy-chart-column { min-height:auto; }
+}
+.traffic-course,.traffic-hit { vector-effect:non-scaling-stroke; }
+@media(max-width:600px) {
+ .traffic-external text { font-size:32px; }
+ .traffic-token { r:8px; }
+}

@@ -262,6 +262,7 @@ async function processMovement(id, now = new Date()) {
         movement.notice = "식민지 개척 완료 · 식민선 1척을 사용했습니다.";
       }
       movement.status = "returning";
+      movement.returnStartTime = now;
       movement.returnTime = new Date(+now + (+movement.arrivalTime - +movement.startTime));
       owner.markModified("planets");
       await owner.save();
@@ -372,7 +373,8 @@ async function processMovement(id, now = new Date()) {
       changed.push(String(target._id));
     }
     movement.status = "returning";
-    movement.returnTime = new Date(
+    movement.returnStartTime = now;
+      movement.returnTime = new Date(
       +now + (+movement.arrivalTime - +movement.startTime),
     );
     await movement.save();

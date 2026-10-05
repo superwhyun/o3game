@@ -276,6 +276,7 @@ async function processMovement(id, now = new Date()) {
       movement.status = "completed";
     } else {
       movement.status = "returning";
+      movement.returnStartTime = now;
       movement.returnTime = new Date(
         +now + (+movement.arrivalTime - +movement.startTime),
       );

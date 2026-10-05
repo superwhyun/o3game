@@ -68,6 +68,11 @@ router.get('/catalog', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/galaxy/traffic', authMiddleware, async (req, res) => {
+  try { res.json(await require('../services/FleetTrafficService').list(req.user._id, req.query)); }
+  catch (error) { res.status(error instanceof RangeError ? 400 : 500).json({ error: error.message }); }
+});
+
 router.get('/galaxy', authMiddleware, async (req, res) => {
   try {
     const galaxy = readCoordinate(req.query.galaxy, 'galaxy');

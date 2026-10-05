@@ -59,6 +59,7 @@ const fleetMovementSchema = new mongoose.Schema({
   // Timing
   startTime: { type: Date, required: true },
   arrivalTime: { type: Date, required: true },
+  returnStartTime: { type: Date, default: null },
   returnTime: { type: Date, default: null },
   
   // Status
@@ -82,6 +83,8 @@ const fleetMovementSchema = new mongoose.Schema({
   speed: { type: Number, default: 100 }
 });
 
+fleetMovementSchema.index({ status: 1, 'origin.galaxy': 1, 'origin.system': 1 });
+fleetMovementSchema.index({ status: 1, 'destination.galaxy': 1, 'destination.system': 1 });
 // Index for quick lookups
 fleetMovementSchema.index({ arrivalTime: 1, status: 1 });
 fleetMovementSchema.index({ userId: 1 });

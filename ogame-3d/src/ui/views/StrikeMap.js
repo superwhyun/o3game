@@ -317,7 +317,7 @@ export class StrikeMap {
       return;
     }
 
-    const mission = verdict.relation === 'empty' ? 'colonize' : verdict.relation !== 'other' ? 'transport' : selectedMission && MISSION_LABEL[selectedMission] ? selectedMission : verdict.mission;
+    const mission = verdict.relation === 'empty' ? 'colonize' : verdict.relation !== 'other' ? 'transport' : ['attack', 'transport'].includes(selectedMission) ? selectedMission : verdict.mission;
     const profile = this.squad.profile();
     const eta = this.eta(slot);
     const ready = profile.ships > 0 && !this.squad.isPending(this.squad.selectedId);

@@ -57,7 +57,7 @@ export class OrbitChart {
       <header class="orbit-caption"><strong></strong><span></span></header>
       <svg class="orbit-svg" viewBox="0 0 ${VIEW.width} ${VIEW.height}" role="group" aria-label="${escapeHtml(label)}"></svg>
       <div class="orbit-legend" aria-hidden="true">
-        <span class="legend-own">아군</span><span class="legend-other">타 제국</span><span class="legend-empty">빈 궤도</span>
+        <span class="legend-own">아군</span><span class="legend-other">타 제국</span><span class="legend-empty">미점령 행성</span>
       </div>`;
     this.svg = container.querySelector('.orbit-svg');
     this.caption = container.querySelector('.orbit-caption');
@@ -194,7 +194,7 @@ export class OrbitChart {
          <circle class="slot-atmo" r="${radius + 3}"/>`;
     const name = position.planet
       ? `${position.position}궤도 ${position.planet.name} (${position.planet.username})`
-      : `${position.position}궤도 빈 궤도`;
+      : `${position.position}궤도 미점령 행성`;
     return `<g class="slot slot-${relation} ${position.position === this.selected ? 'is-selected' : ''}" data-slot="${position.position}"
         tabindex="0" role="button" aria-label="${escapeHtml(name)}">
         <circle class="slot-hit" r="${Math.max(radius + 12, 20)}"/>

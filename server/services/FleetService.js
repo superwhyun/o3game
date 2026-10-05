@@ -230,9 +230,13 @@ async function processMovement(id, now = new Date()) {
         formation.status = "ready";
         formation.activeMovementId = null;
         formation.revision++;
-        formation.notice = Object.values(formation.ships).some((n) => n > 0)
-          ? "생존 함선이 귀환했습니다."
-          : "모든 함선을 잃었습니다. 다시 편성하십시오.";
+        formation.notice = movement.mission === "colonize" && movement.notice.startsWith("식민지 개척 완료")
+          ? Object.values(formation.ships).some((n) => n > 0)
+            ? "식민지 개척 후 남은 함선이 귀환했습니다."
+            : "식민선을 개척에 사용했습니다. 다시 편성하십시오."
+          : Object.values(formation.ships).some((n) => n > 0)
+            ? "생존 함선이 귀환했습니다."
+            : "모든 함선을 잃었습니다. 다시 편성하십시오.";
       }
       owner.markModified("planets");
       await owner.save();

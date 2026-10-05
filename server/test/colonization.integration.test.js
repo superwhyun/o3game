@@ -54,5 +54,21 @@ test('colony mission consumes one ship, transfers cargo, returns once and resolv
       assert.equal(user.planets[0].fleet.smallCargo, 1);
       assert.equal(user.fleetFormations[0].status, 'ready');
     }
+    const latest = await User.findById(b._id);
+    const blocked = { ...order(latest), expectedRevision: latest.fleetFormations[0].revision };
+    await assert.rejects(fleets.launch(b._id, blocked), /이미 점령/);
+    await forms.change(b._id, 'update', latest.fleetFormations[0]._id, { expectedRevision: latest.fleetFormations[0].revision, name: '수송 함대', ships: { smallCargo: 1 } });
+    const noColony = await User.findById(b._id);
+    await assert.rejects(fleets.launch(b._id, { ...order(noColony), expectedRevision: noColony.fleetFormations[0].revision, destination: { ...dest, planet: 5 } }), /식민선이 필요/);
+    const c = await make('colonistC', 7);
+    await forms.change(c._id, 'update', c.fleetFormations[0]._id, { expectedRevision: 2, name: '단독 식민선', ships: { colonyShip: 1 } });
+    const single = await fleets.launch(c._id, { ...order(c), expectedRevision: 3, destination: { ...dest, planet: 6 }, cargo: {} });
+    await fleets.processMovement(single._id, new Date(+single.arrivalTime + 1));
+    const singleReturn = await Movement.findById(single._id);
+    await fleets.processMovement(single._id, new Date(+singleReturn.returnTime + 1));
+    const final = await User.findById(c._id);
+    assert.deepEqual(final.fleetFormations[0].ships, {});
+    assert.match(final.fleetFormations[0].notice, /개척에 사용/);
+    assert.equal(final.planets.length, 2);
   } finally { await mongoose.disconnect(); await db.stop(); }
 });

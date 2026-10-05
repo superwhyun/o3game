@@ -416,6 +416,7 @@ export class UIManager {
     if (view !== this.currentView && this.currentView === 'fleet' && this.formationView && !this.formationView.guard(() => this.switchView(view))) return;
     stopInspector();
     this.currentView = view;
+    if(view!=='galaxy')this.galaxyView?.setActive(false);
     this.navButtons.forEach(button => button.classList.toggle('active', button.dataset.view === view));
     Object.values(this.panels).forEach(panel => {
       if (panel) panel.classList.add('hidden');
@@ -716,7 +717,8 @@ export class UIManager {
         void scouts.selectTarget({...coords,planet:position.position});
         this.updateScoutUI();
       },
-      fetchTraffic: (galaxy, system) => apiService.getGalaxyTraffic(galaxy, system),
+      getAccount: () => apiService.token,
+      fetchTraffic: (galaxy, system, options) => apiService.getGalaxyTraffic(galaxy, system, options),
       fetchSystem: (galaxy, system) => apiService.getGalaxySystem(galaxy, system),
       getHome: () => ({ galaxy: gameState.planet.galaxy, system: gameState.planet.system }),
       onTarget: (target) => {
@@ -812,6 +814,7 @@ export class UIManager {
     } finally {this.recoveringOrders=false;}
   }
   async syncMilitaryState() {
+    if(this.currentView==='galaxy' && !document.hidden && apiService.isAuthenticated())void this.galaxyView?.refreshTraffic();
     if (this.militarySyncing || !apiService.isAuthenticated() || !catalog.loaded) return;
     this.militarySyncing=true;
     try {
@@ -833,7 +836,10 @@ export class UIManager {
         if(document.hidden || !['fleet','combat','galaxy'].includes(this.currentView) || !apiService.isAuthenticated())return;
         this.syncMilitaryState();
       },8000);
-      document.addEventListener('visibilitychange',()=>{if(!document.hidden && ['fleet','combat','galaxy'].includes(this.currentView))this.syncMilitaryState();});
+      document.addEventListener('visibilitychange',()=>{
+        this.galaxyView?.setActive(!document.hidden && this.currentView==='galaxy');
+        if(!document.hidden && ['fleet','combat','galaxy'].includes(this.currentView))this.syncMilitaryState();
+      });
       window.addEventListener('focus',()=>{if(['fleet','combat','galaxy'].includes(this.currentView))this.syncMilitaryState();});
       document.getElementById('fleet-to-combat')?.addEventListener('click',()=>this.switchView('combat'));
       document.getElementById('manual-combat-target')?.addEventListener('submit',event=>{
@@ -841,7 +847,7 @@ export class UIManager {
         this.strikeMap.show({galaxy:Number(fields.get('galaxy')),system:Number(fields.get('system'))},{targetSlot:Number(fields.get('planet'))});
       });
       document.getElementById('scout-reports')?.addEventListener('toggle',event=>{if(event.target.open)void this.getScoutController().refresh();});
-      if(!this.scoutClock)this.scoutClock=setInterval(()=>{this.galaxyScoutView?.tick();this.scoutHistoryView?.tick();},1000);
+      if(!this.scoutClock)this.scoutClock=setInterval(()=>{this.galaxyScoutView?.tick();this.scoutHistoryView?.tick();if(this.currentView==='galaxy'&&!document.hidden)this.galaxyView?.traffic.tick();},1000);
       document.getElementById('combat-reports')?.addEventListener('toggle',async event=>{
         if(!event.target.open)return;
         const root=event.target.querySelector('.movement-log');
@@ -1976,6 +1982,7 @@ export class UIManager {
     this.strikeMap?.endDrag();this.strikeMap?.closeConfirm();
     if (this.formationView) { this.formationView.dirty = false; this.formationView.selectedId = null; this.formationView.draft = null; this.formationView.signature = null; }
     this.scouts?.reset();
+    this.galaxyView?.setActive(false);this.galaxyView?.trafficController.reset();
     apiService.logout();
     localStorage.removeItem('user');
     

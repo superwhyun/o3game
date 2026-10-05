@@ -52,3 +52,90 @@ test('map draws colored internal, external and return arrows without blocking pl
  await page.screenshot({ path: '../artifacts/fleet-ui/traffic-mobile.png' });
  expect(errors).toEqual([]);
 });
+
+test('another commander launches real fleets; internal, external, return and completion update the observer', async ({ page, browser }) => {
+ const User = require('../../server/models/User'), Movement = require('../../server/models/FleetMovement');
+ const jwt = require('../../server/node_modules/jsonwebtoken');
+ const { randomUUID } = await import('node:crypto');
+ const other = await User.findOne({username:'target_ui_test'});
+ other.planets[0].fleet.smallCargo=2;await other.save();
+ const remote = await User.create({username:'remote_traffic',email:'remote-traffic@test.invalid',password:randomUUID(),planets:[{galaxy:2,system:17,planet:12,fleet:{smallCargo:2}}]});
+ const auth = user => ({token:jwt.sign({userId:String(user._id)},'isolated-fleet-preview-secret-not-for-production-2026'),user:{id:String(user._id),username:user.username}});
+ await login(page);
+ await expect(page.locator('.traffic-course')).toHaveCount(0);
+ const otherContext=await browser.newContext();const otherPage=await otherContext.newPage();
+ try {
+  await login(otherPage,auth(other));
+  await otherPage.locator('.holo-btn[data-view="fleet"]').click();
+  await otherPage.locator('[data-action="create"]').first().click();
+  await otherPage.locator('[data-quantity="smallCargo"]').fill('1');await otherPage.locator('[data-quantity="smallCargo"]').dispatchEvent('change');
+  await otherPage.locator('[data-action="save"]').click();await expect(otherPage.locator('.draft-state')).toHaveText('편성이 저장되었습니다.');
+  await otherPage.locator('.holo-btn[data-view="combat"]').click();
+  await otherPage.waitForFunction(()=>window.uiManager.strikeMap.positions.length===15);
+  await otherPage.locator('[data-combat-fleet]').click();await otherPage.locator('#strike-map .orbit-host [data-slot="4"]').click();
+  await otherPage.locator('[name="mission"]').selectOption('transport');await otherPage.locator('[data-confirm="launch"]').click();
+  await expect(otherPage.locator('[data-movement]')).toHaveCount(1);
+  await expect(page.locator('.traffic-course')).toHaveCount(1,{timeout:15000});
+  await expect(page.locator('.traffic-owners')).toContainText(other.username);
+  const launch = async(user,token,target,destination)=>{
+   const headers={Authorization:`Bearer ${token}`};
+   const created=await page.request.post('http://localhost:3999/api/game/fleet-formations',{headers,data:{originPlanetId:String(user.planets[0]._id)}});
+   expect(created.status()).toBe(201);const body=await created.json();
+   // Formation mutation responses include the selected formation ID at the top level.
+   const id=body.formationId;
+   const saved=await page.request.patch(`http://localhost:3999/api/game/fleet-formations/${id}`,{headers,data:{name:'교통 확인 함대',ships:{smallCargo:1},expectedRevision:1}});expect(saved.ok()).toBeTruthy();
+   const sent=await page.request.post('http://localhost:3999/api/game/fleets',{headers,data:{requestId:randomUUID(),formationId:id,originPlanetId:String(user.planets[0]._id),expectedRevision:2,expectedTargetPlanetId:String(target),destination,mission:'transport',cargo:{}}});
+   expect(sent.status()).toBe(201);
+  };
+  await launch(remote,auth(remote).token,fixture.planetId,{galaxy:1,system:1,planet:4});
+  const viewer=await User.findById(fixture.user.id);
+  await launch(viewer,fixture.token,remote.planets[0]._id,{galaxy:2,system:17,planet:12});
+  await expect(page.locator('.traffic-course')).toHaveCount(3,{timeout:15000});
+  await expect(page.locator('.traffic-external')).toHaveText('[2:17] 성계');
+  await page.locator('[data-traffic-filter]').selectOption('incoming');await expect(page.locator('.traffic-course')).toHaveCount(2);
+  await page.locator('[data-traffic-filter]').selectOption('all');
+  await page.locator('.traffic-list summary').click();await page.locator('[data-traffic-route]').first().click();
+  await expect(page.locator('.traffic-individual')).toHaveCount(1);
+  await page.locator('.galaxy-chart-column').evaluate(el=>el.scrollTop=0);
+  await page.screenshot({path:'../artifacts/fleet-ui/traffic-live-routes.png'});
+  await require('../../server/services/EntityConfigService').initialize();
+  const service=require('../../server/services/FleetService');
+  for(const m of await Movement.find({status:'flying'})){
+   m.startTime=new Date(Date.now()-60000);m.arrivalTime=new Date(Date.now()-1000);await m.save();
+   await service.processMovement(m._id,new Date());
+  }
+  await expect(page.locator('.traffic-course.is-returning')).toHaveCount(3,{timeout:15000});
+  for(const m of await Movement.find({status:'returning'})){
+   m.returnTime=new Date(Date.now()-1000);await m.save();await service.processMovement(m._id,new Date());
+  }
+  await expect(page.locator('.traffic-course')).toHaveCount(0,{timeout:15000});
+  await expect(page.locator('[data-traffic-count]')).toHaveText('0 / 0');
+ } finally {await otherContext.close();}
+});
+
+test('late system responses, offline recovery, reduced motion and logout preserve a clean traffic view', async ({page})=>{
+ await page.emulateMedia({reducedMotion:'reduce'});await login(page);
+ await expect(page.locator('[data-traffic-count]')).toHaveText('0 / 0');
+ let release;const delayed=new Promise(resolve=>release=resolve);
+ await page.route('**/api/game/galaxy/traffic?*',async route=>{
+  if(new URL(route.request().url()).searchParams.get('system')==='2') {await delayed;await route.fulfill({json:{galaxy:1,system:2,serverTime:new Date().toISOString(),total:99,routes:[],movements:[],nextCursor:null}});} else await route.continue();
+ });
+ const waiting=page.waitForRequest(r=>r.url().includes('/galaxy/traffic?')&&r.url().includes('system=2'));
+ await page.evaluate(()=>{void window.uiManager.galaxyView.show({galaxy:1,system:2});});
+ await waiting;
+ await page.evaluate(()=>window.uiManager.galaxyView.show({galaxy:1,system:1}));release();
+ await expect(page.locator('[data-traffic-count]')).toHaveText('0 / 0');
+ await page.unroute('**/api/game/galaxy/traffic?*');
+ await page.route('**/api/game/galaxy/traffic?*',route=>route.abort());
+ await page.evaluate(()=>window.uiManager.galaxyView.refreshTraffic());
+ await expect(page.locator('.traffic-status')).toContainText('연결 지연');
+ await page.unroute('**/api/game/galaxy/traffic?*');await page.evaluate(()=>window.uiManager.galaxyView.refreshTraffic());
+ await expect(page.locator('.traffic-status')).not.toContainText('연결 지연');
+ await page.locator('.slot-row[data-slot="8"]').click();
+ await page.evaluate(()=>window.uiManager.galaxyView.refreshTraffic());
+ await expect(page.locator('.slot-detail')).toContainText('하이네센');
+ await page.locator('.holo-btn[data-view="dashboard"]').click();
+ expect(await page.evaluate(()=>window.uiManager.galaxyView.trafficController.active)).toBe(false);
+ await page.locator('#logout-btn').click();
+ expect(await page.evaluate(()=>window.uiManager.galaxyView.traffic.routes.length)).toBe(0);
+});

@@ -2,6 +2,7 @@
  * Star-system view: orbital chart plus a slot list and a detail card.
  */
 import { escapeHtml } from '../dom.js';
+import { FleetTrafficController } from './FleetTrafficController.js';
 import { FleetTrafficLayer } from './FleetTrafficLayer.js';
 import { OrbitChart, relationOf } from './OrbitChart.js';
 import { bindSystemNav, clampCoords } from './systemNav.js';
@@ -17,7 +18,7 @@ export class GalaxyView {
    * @param {() => { galaxy: number, system: number }} options.getHome
    * @param {(target: { galaxy: number, system: number, planet: number }) => void} options.onTarget
    */
-  constructor({ root, controls, fetchSystem, getHome, onTarget, onSelect, fetchTraffic }) {
+  constructor({ root, controls, fetchSystem, getHome, onTarget, onSelect, fetchTraffic, getAccount = () => null }) {
     this.root = root;
     this.fetchSystem = fetchSystem;
     this.getHome = getHome;
@@ -37,7 +38,17 @@ export class GalaxyView {
         <ol class="slot-list" aria-label="궤도 목록"></ol>
       </aside>`;
     this.chart = new OrbitChart(this.root.querySelector('.orbit-host'), { onSelect: (slot) => this.select(slot) });
-    this.traffic = new FleetTrafficLayer(this.chart, { controlsRoot: this.root.querySelector('.traffic-host') });
+    this.traffic = new FleetTrafficLayer(this.chart, {
+      controlsRoot: this.root.querySelector('.traffic-host'),
+      onSelect: route => this.trafficController.select(route),
+      onMore: () => this.trafficController.loadMore(),
+    });
+    this.trafficController = new FleetTrafficController({
+      fetchTraffic, getAccount,
+      onData: data => this.traffic.update(data), onStatus: error => this.traffic.setStatus(error),
+      onDetails: (rows, cursor, error) => this.traffic.showMovements(rows, cursor, error),
+      onReset: () => this.traffic.reset(),
+    });
     this.listEl = this.root.querySelector('.slot-list');
     this.detailEl = this.root.querySelector('.slot-detail');
     this.scoutEl = this.root.querySelector('.scout-panel');
@@ -62,6 +73,8 @@ export class GalaxyView {
     const next = clampCoords(coords);
     if (!this.coords || this.coords.galaxy !== next.galaxy || this.coords.system !== next.system) this.selected = null;
     this.coords = next;
+    this.setActive(true);
+    this.trafficController.setSystem(next);
     this.nav.sync(next);
 
     const requestId = ++this.requestId;
@@ -76,10 +89,7 @@ export class GalaxyView {
       this.chart.setSystem(next, data.positions, this.selected);
       this.renderList();
       this.renderDetail();
-      if (this.fetchTraffic) {
-        try { const traffic = await this.fetchTraffic(next.galaxy, next.system); if(requestId===this.requestId)this.traffic.update(traffic); }
-        catch(error){if(requestId===this.requestId)this.traffic.setStatus(error.message);}
-      }
+      if (this.fetchTraffic) await this.trafficController.refresh();
     } catch (error) {
       if (requestId !== this.requestId) return;
       this.data = null;
@@ -89,6 +99,13 @@ export class GalaxyView {
       if (requestId === this.requestId) this.root.classList.remove('is-loading');
     }
   }
+
+  setActive(active) {
+    this.trafficController.setActive(active);
+    if(active) this.chart.start(); else this.chart.stop();
+  }
+
+  refreshTraffic() { return this.trafficController.refresh(); }
 
   select(slot) {
     this.selected = slot;

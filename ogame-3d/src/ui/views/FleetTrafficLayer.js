@@ -24,9 +24,12 @@ export class FleetTrafficLayer {
   this.routes = [...data.routes].sort((a,b)=>a.id.localeCompare(b.id)); this.total = data.total; this.observedAt = data.serverTime;
   this.clockOffset = +new Date(data.serverTime) - Date.now();
   if (!this.routes.some(r => r.id === this.selected)) { this.selected = null; this.root.querySelector('.traffic-detail').hidden = true; }
-  this.render(); this.setStatus();
+  this.render();
+  const selected = this.routes.find(r=>r.id===this.selected);
+  if(selected){const eta=this.root.querySelector('.traffic-detail [data-traffic-eta]');if(eta)eta.dataset.trafficEta=selected.endsAt;}
+  this.setStatus();
  }
- reset() { this.routes = []; this.total = 0; this.selected = null; this.observedAt = null; this.root.querySelector('.traffic-detail').hidden = true; this.render(); this.setStatus(); }
+ reset() { this.routes = []; this.total = 0; this.selected = null; this.observedAt = null; this.clockOffset = 0; this.root.querySelector('.traffic-detail').hidden = true; this.render(); this.setStatus(); }
  setStatus(error = '') {
   this.statusEl.textContent = error ? `연결 지연 · ${this.observedAt ? new Date(this.observedAt).toLocaleTimeString('ko-KR') + ' 관측 유지' : '다시 연결하는 중'}` : this.observedAt ? `${new Date(this.observedAt).toLocaleTimeString('ko-KR')} 갱신 · 외부 위치는 성계 단위로 표시` : '이동 정보를 불러오는 중…';
   this.statusEl.classList.toggle('is-stale', Boolean(error));

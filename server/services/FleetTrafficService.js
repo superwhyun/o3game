@@ -28,7 +28,17 @@ async function list(userId, query) {
     if (typeof query.route !== 'string' || query.route.length > 1024) throw new RangeError('항로가 올바르지 않습니다.');
     let route;
     try { route = JSON.parse(Buffer.from(query.route, 'base64url').toString()); } catch { throw new RangeError('항로가 올바르지 않습니다.'); }
-    detail.push({ $match: { $expr: { $eq: ['$route', { $literal: route }] } } });
+    if (!route || typeof route.ownerKey !== 'string' || !['flying','returning'].includes(route.status)) throw new RangeError('항로가 올바르지 않습니다.');
+    const routeMatch = { ownerKey: route.ownerKey, status: route.status };
+    for (const key of ['from', 'to']) {
+      const point = route[key];
+      if (!point || typeof point !== 'object') throw new RangeError('항로가 올바르지 않습니다.');
+      const fields = point.planet === undefined ? ['galaxy','system'] : ['planet'];
+      if (Object.keys(point).length !== fields.length || fields.some(field=>!Number.isSafeInteger(point[field]) || point[field]<1)) throw new RangeError('항로가 올바르지 않습니다.');
+      for (const field of fields) routeMatch[`${key}.${field}`] = point[field];
+      routeMatch[`${key}.${point.planet === undefined ? 'planet' : 'galaxy'}`] = { $exists: false };
+    }
+    detail.push({ $match: routeMatch });
   }
   if (query.cursor) {
     if (!mongoose.isValidObjectId(query.cursor)) throw new RangeError('페이지 위치가 올바르지 않습니다.');

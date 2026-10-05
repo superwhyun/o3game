@@ -38,9 +38,9 @@ function sameCoords(a, b) {
   return ["galaxy", "system", "planet"].every((k) => a[k] === b[k]);
 }
 function cleanOrder(input) {
-  if (!["attack", "transport"].includes(input.mission))
+  if (!["attack", "transport", "colonize"].includes(input.mission))
     fail("지원하지 않는 임무입니다.", 400, "INVALID_MISSION");
-  for (const key of ["formationId", "originPlanetId", "expectedTargetPlanetId"])
+  for (const key of ["formationId", "originPlanetId", ...(input.mission === "colonize" ? [] : ["expectedTargetPlanetId"])])
     if (!mongoose.isValidObjectId(input[key]))
       fail("함대와 목표를 다시 선택하십시오.", 400, "INVALID_ID");
   if (
@@ -66,7 +66,7 @@ function cleanOrder(input) {
   return {
     formationId: input.formationId,
     originPlanetId: input.originPlanetId,
-    expectedTargetPlanetId: input.expectedTargetPlanetId,
+    expectedTargetPlanetId: input.mission === "colonize" ? null : input.expectedTargetPlanetId,
     expectedRevision: input.expectedRevision,
     requestId: input.requestId,
     mission: input.mission,
@@ -125,8 +125,11 @@ async function launch(userId, input) {
       const targetPlanet = target?.planets.find((p) =>
         sameCoords(p, order.destination),
       );
-      if (!targetPlanet) fail("목표 행성이 없습니다.", 409, "TARGET_CHANGED");
-      if (!sameId(targetPlanet._id, order.expectedTargetPlanetId))
+      if (order.mission === "colonize") {
+        if (!(fleet.colonyShip > 0)) fail("식민 임무에는 식민선이 필요합니다.", 400);
+        if (targetPlanet) fail("이미 점령된 행성입니다.", 409, "TARGET_CHANGED");
+      } else if (!targetPlanet) fail("목표 행성이 없습니다.", 409, "TARGET_CHANGED");
+      if (order.mission !== "colonize" && !sameId(targetPlanet._id, order.expectedTargetPlanetId))
         fail(
           "목표 행성이 변경되었습니다. 다시 확인하십시오.",
           409,
@@ -147,12 +150,12 @@ async function launch(userId, input) {
       const movement = new FleetMovement({
         userId: user._id,
         username: user.username,
-        targetUserId: target._id,
+        targetUserId: target?._id,
         formationId: formation._id,
         formationNameAtLaunch: formation.name,
         formationRevisionAtLaunch: formation.revision,
         originPlanetId: planet._id,
-        targetPlanetId: targetPlanet._id,
+        targetPlanetId: targetPlanet?._id,
         requestId: order.requestId,
         requestHash: hash,
         mission: order.mission,
@@ -188,7 +191,7 @@ async function processMovement(id, now = new Date()) {
   const pending = await FleetMovement.findById(id).select("formationId mission").lean();
   if (pending?.mission === "spy") return require("./ScoutService").processMovement(id, now);
   if (pending?.formationId) await requireTransactions();
-  return atomic(async () => {
+  const run = () => atomic(async () => {
     const movement = await FleetMovement.findById(id);
     if (!movement || !["flying", "returning"].includes(movement.status))
       return [];
@@ -238,6 +241,29 @@ async function processMovement(id, now = new Date()) {
       return [String(owner._id)];
     }
     if (+movement.arrivalTime > +now) return [];
+    if (movement.mission === "colonize") {
+      const occupied = await User.exists({ planets: { $elemMatch: coords(movement.destination) } });
+      if (occupied) movement.notice = "다른 함대가 먼저 점령했습니다. 모든 함선이 귀환합니다.";
+      else if (!(movement.fleet.colonyShip > 0)) movement.notice = "식민선이 없어 개척하지 못했습니다. 귀환합니다.";
+      else {
+        owner.planets.push({
+          name: `Colony-${owner.planets.length + 1}`,
+          ...coords(movement.destination),
+          ...require("../utils/colonizationRules").environmentOf(movement.destination),
+          resources: { ...plain(movement.cargo), energy: 0 },
+          lastUpdate: now,
+        });
+        movement.fleet = { ...plain(movement.fleet), colonyShip: movement.fleet.colonyShip - 1 };
+        movement.cargo = { metal: 0, crystal: 0, deuterium: 0 };
+        movement.notice = "식민지 개척 완료 · 식민선 1척을 사용했습니다.";
+      }
+      movement.status = "returning";
+      movement.returnTime = new Date(+now + (+movement.arrivalTime - +movement.startTime));
+      owner.markModified("planets");
+      await owner.save();
+      await movement.save();
+      return [String(owner._id)];
+    }
     const target = sameId(owner._id, movement.targetUserId)
       ? owner
       : (
@@ -350,5 +376,11 @@ async function processMovement(id, now = new Date()) {
     if (target !== owner) await owner.save();
     return [...new Set(changed)];
   });
+  try { return await run(); }
+  catch (error) {
+    // A competing colony/home allocation can win the unique coordinate index.
+    if (User.isCoordinateConflict(error)) return run();
+    throw error;
+  }
 }
 module.exports = { launch, processMovement };

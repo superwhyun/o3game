@@ -11,7 +11,7 @@ import { OrbitChart, relationOf } from './OrbitChart.js';
 import { FleetRoster } from './FleetRoster.js';
 import { bindSystemNav, clampCoords } from './systemNav.js';
 
-const MISSION_LABEL = { attack: '공격', transport: '수송' };
+const MISSION_LABEL = { attack: '공격', transport: '수송', colonize: '식민지 개척' };
 const EDGE_SCROLL_ZONE = 72; // px from the scroller edge where dragging scrolls
 const EDGE_SCROLL_MAX = 18; // px per frame at the very edge
 
@@ -148,7 +148,9 @@ export class StrikeMap {
   evaluateTarget(slot) {
     const position = this.positions.find((p) => p.position === slot);
     if (!position) return { valid: false, reason: '목표 없음' };
-    if (!position.occupied) return { valid: false, reason: '빈 궤도 — 행성이 없습니다' };
+    if (!position.occupied) return this.squad.formation?.ships?.colonyShip > 0
+      ? { valid: true, position, relation: 'empty', mission: 'colonize' }
+      : { valid: false, reason: '미점령 행성 — 식민선이 포함된 함대를 선택하십시오' };
     if (this.isHomeSlot(slot)) return { valid: false, reason: '출발지(본거지)입니다' };
     const relation = relationOf(position);
     return { valid: true, position, relation, mission: relation === 'other' ? 'attack' : 'transport' };
@@ -301,7 +303,7 @@ export class StrikeMap {
     const cargo = Object.fromEntries([...this.confirmEl.querySelectorAll('[data-cargo]')].map(el=>[el.dataset.cargo,el.value]));
     const position = this.positions.find((p) => p.position === slot);
     const coordText = `[${this.coords.galaxy}:${this.coords.system}:${slot}]`;
-    const title = position?.planet ? escapeHtml(position.planet.name) : '빈 궤도';
+    const title = position?.planet ? escapeHtml(position.planet.name) : '미점령 행성';
     this.confirmEl.hidden = false;
 
     if (!verdict.valid) {
@@ -315,26 +317,27 @@ export class StrikeMap {
       return;
     }
 
-    const mission = verdict.relation !== 'other' ? 'transport' : selectedMission && MISSION_LABEL[selectedMission] ? selectedMission : verdict.mission;
+    const mission = verdict.relation === 'empty' ? 'colonize' : verdict.relation !== 'other' ? 'transport' : selectedMission && MISSION_LABEL[selectedMission] ? selectedMission : verdict.mission;
     const profile = this.squad.profile();
     const eta = this.eta(slot);
     const ready = profile.ships > 0 && !this.squad.isPending(this.squad.selectedId);
-    this.confirmArrow = ready ? { slot, label: `${MISSION_LABEL[mission]} · ${position.planet.name}` } : null;
+    this.confirmArrow = ready ? { slot, label: `${MISSION_LABEL[mission]} · ${(position.planet?.name || '미점령 행성')}` } : null;
     this.drawConfirmArrow();
 
     this.confirmEl.innerHTML = `
-      <p class="detail-kicker">${coordText} · ${verdict.relation === 'other' ? '타 제국' : '아군'}</p>
+      <p class="detail-kicker">${coordText} · ${verdict.relation === 'empty' ? '개척 가능 · 도착 시 점령 상태 재확인' : verdict.relation === 'other' ? '타 제국' : '아군'}</p>
       <h4 class="slot-detail-title">${title}</h4>
       <dl class="spec-list single">
-        <div class="spec-row"><dt>사령관</dt><dd>${escapeHtml(position.planet.username)}</dd></div>
+        <div class="spec-row"><dt>사령관</dt><dd>${escapeHtml(position.planet?.username || '없음')}</dd></div>
         <div class="spec-row"><dt>${escapeHtml(this.squad.formation?.name || '함대')}</dt><dd>${ready ? `${formatAmount(profile.ships)}척 · 공격력 ${formatAmount(profile.attack)}` : '미편성'}</dd></div>
         <div class="spec-row"><dt>도착 예정</dt><dd>${eta ? formatDuration(eta) : '—'}</dd></div>
       </dl>
       <label class="field confirm-mission">임무
         <select name="mission">
-          ${Object.entries(MISSION_LABEL).filter(([value]) => verdict.relation === 'other' || value !== 'attack').map(([value, label]) => `<option value="${value}" ${value === mission ? 'selected' : ''}>${label}</option>`).join('')}
+          ${Object.entries(MISSION_LABEL).filter(([value]) => verdict.relation === 'empty' ? value === 'colonize' : value !== 'colonize' && (verdict.relation === 'other' || value !== 'attack')).map(([value, label]) => `<option value="${value}" ${value === mission ? 'selected' : ''}>${label}</option>`).join('')}
         </select>
       </label>
+      ${mission === 'colonize' ? '<p class="detail-muted">도착 시 식민선 1척으로 개척합니다. 적재 자원은 새 식민지에 전달되며 나머지 함선은 귀환합니다. 정찰 보고서에서 지형과 사용 가능 면적을 먼저 확인할 수 있습니다.</p>' : ''}
       <details class="combat-cargo"><summary>자원 적재</summary><div class="field-row cols-3">${[['metal','금속'],['crystal','수정'],['deuterium','중수소']].map(([id,label])=>`<label class="field">${label}<input type="number" data-cargo="${id}" min="0" step="1" value="${escapeHtml(cargo[id] || '0')}" inputmode="numeric"></label>`).join('')}</div></details>
       <div class="confirm-actions">
         <button type="button" class="cmd-btn" data-confirm="cancel" ${this.launching?'disabled':''}>취소</button>
@@ -350,7 +353,7 @@ export class StrikeMap {
     if (!verdict.valid || !formation || this.squad.profile().ships === 0 || this.launching || this.squad.isPending(formation.id)) return;
     const destination = { ...this.coords, planet: this.target };
     const mission = this.confirmEl.querySelector('[name="mission"]')?.value || verdict.mission;
-    const expectedTargetPlanetId = verdict.position.planet.id;
+    const expectedTargetPlanetId = verdict.position.planet?.id || null;
     const cargo = Object.fromEntries([...this.confirmEl.querySelectorAll('[data-cargo]')].map(el=>[el.dataset.cargo,Number(el.value)]));
     this.launching = true;
     this.renderConfirm();

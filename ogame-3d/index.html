@@ -176,10 +176,10 @@
           <span class="shortcut">4</span>
         </button>
         <button class="holo-btn" data-view="fleet">
-          <span class="label">함대</span>
+          <span class="label">함대편성</span>
           <span class="shortcut">6</span>
         </button>
-        <button class="holo-btn" data-view="combat"><span class="label">전투</span><span class="shortcut">7</span></button>
+        <button class="holo-btn" data-view="combat"><span class="label">함대운용</span><span class="shortcut">7</span></button>
       </div>
       <div class="nav-section">
         <h3 class="section-title">情報 <span>정보</span></h3>
@@ -313,12 +313,12 @@
       </section>
 
       <section class="holo-panel hidden" id="fleet-panel" aria-labelledby="fleet-title">
-        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">艦隊</span><h2 id="fleet-title">함대 편성</h2><span class="panel-sub">FLEET HANGAR</span></div><button class="holo-btn-small" id="fleet-to-combat">전투 지도 →</button></header>
+        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">艦隊</span><h2 id="fleet-title">함대편성</h2><span class="panel-sub">FLEET HANGAR</span></div><button class="holo-btn-small" id="fleet-to-combat">함대운용 →</button></header>
         <div class="fleet-scroll"><div id="formation-view"></div></div>
       </section>
       <section class="holo-panel hidden" id="combat-panel" aria-labelledby="combat-title">
-        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">戰鬪</span><h2 id="combat-title">전투</h2><span class="panel-sub">TACTICAL OPERATIONS</span></div><span class="panel-sub">편성한 함대를 목표 행성으로</span></header>
-        <div class="fleet-scroll"><section id="strike-map" aria-label="전투 지도"></section><div id="combat-missions"></div><details class="combat-secondary"><summary>좌표로 목표 지정</summary><form id="manual-combat-target"><label class="field">은하<input name="galaxy" type="number" min="1" max="9" value="1" required></label><label class="field">성계<input name="system" type="number" min="1" max="499" value="1" required></label><label class="field">행성<input name="planet" type="number" min="1" max="15" value="1" required></label><button class="cmd-btn" type="submit">목표 확인</button></form></details><details class="combat-secondary" id="scout-reports"><summary>정찰 보고 · 침입 탐지</summary><div id="scout-reports-content" class="scout-report-grid"></div></details><details class="combat-secondary" id="combat-reports"><summary>전투 보고</summary><div class="movement-log"></div></details></div>
+        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">運用</span><h2 id="combat-title">함대운용</h2><span class="panel-sub">TACTICAL OPERATIONS</span></div><span class="panel-sub">편성한 함대를 목표 행성으로</span></header>
+        <div class="fleet-scroll"><section id="strike-map" aria-label="함대운용 지도"></section><div id="combat-missions"></div><details class="combat-secondary"><summary>좌표로 목표 지정</summary><form id="manual-combat-target"><label class="field">은하<input name="galaxy" type="number" min="1" max="9" value="1" required></label><label class="field">성계<input name="system" type="number" min="1" max="499" value="1" required></label><label class="field">행성<input name="planet" type="number" min="1" max="15" value="1" required></label><button class="cmd-btn" type="submit">목표 확인</button></form></details><details class="combat-secondary" id="scout-reports"><summary>정찰 보고 · 침입 탐지</summary><div id="scout-reports-content" class="scout-report-grid"></div></details><details class="combat-secondary" id="combat-reports"><summary>전투 보고</summary><div class="movement-log"></div></details></div>
       </section>
 
       <!-- Admin Panel -->

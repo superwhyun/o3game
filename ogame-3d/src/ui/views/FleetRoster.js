@@ -72,7 +72,7 @@ export class FleetRoster {
           return `<button type="button" class="combat-fleet-card ${f.id === this.selectedId ? "is-selected" : ""}" data-combat-fleet="${escapeHtml(f.id)}" aria-pressed="${f.id === this.selectedId}" ${pending ? "disabled" : ""}><div class="combat-fleet-images">${shipImages(f.ships)}</div><div class="combat-card-heading"><strong>${escapeHtml(f.name)}</strong><span>${formatAmount(profile.ships)}척</span></div><small>${escapeHtml(compositionText(f.ships))}</small><div class="combat-card-bottom"><span>공격력 ${formatAmount(profile.attack)}</span><b>${pending ? "결과 확인 중…" : "끌어서 출격 ↗"}</b></div></button>`;
         })
         .join("") ||
-      '<div class="fleet-empty compact"><span>✦</span><h4>출격 가능한 함대가 없습니다.</h4><p>함대를 편성하거나 진행 중인 임무의 귀환을 기다리십시오.</p><button class="cmd-btn" data-empty-manage>함대 편성 →</button></div>';
+      '<div class="fleet-empty compact"><span>✦</span><h4>출격 가능한 함대가 없습니다.</h4><p>함대를 편성하거나 진행 중인 임무의 귀환을 기다리십시오.</p><button class="cmd-btn" data-empty-manage>함대편성 →</button></div>';
     this.list
       .querySelector("[data-empty-manage]")
       ?.addEventListener("click", () => this.onManage());

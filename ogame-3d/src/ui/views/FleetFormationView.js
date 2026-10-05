@@ -284,7 +284,7 @@ export class FleetFormationView {
     const f = this.selected();
     if (!f || !this.draft) {
       this.editor.innerHTML =
-        '<div class="fleet-empty"><span>✦</span><h3>첫 함대를 편성하십시오.</h3><p>함대를 만들고 보유 함선을 배정하면 전투 지도에서 출격할 수 있습니다.</p><button class="cmd-btn primary" data-action="create">＋ 함대 만들기</button></div>';
+        '<div class="fleet-empty"><span>✦</span><h3>첫 함대를 편성하십시오.</h3><p>함대를 만들고 보유 함선을 배정하면 함대운용 화면에서 출격할 수 있습니다.</p><button class="cmd-btn primary" data-action="create">＋ 함대 만들기</button></div>';
       return;
     }
     const locked = f.status !== "ready" || this.busy;

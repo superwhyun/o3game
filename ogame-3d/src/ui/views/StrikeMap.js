@@ -337,7 +337,7 @@ export class StrikeMap {
           ${Object.entries(MISSION_LABEL).filter(([value]) => verdict.relation === 'empty' ? value === 'colonize' : value !== 'colonize' && (verdict.relation === 'other' || value !== 'attack')).map(([value, label]) => `<option value="${value}" ${value === mission ? 'selected' : ''}>${label}</option>`).join('')}
         </select>
       </label>
-      ${mission === 'colonize' ? '<p class="detail-muted">도착 시 식민선 1척으로 개척합니다. 적재 자원은 새 식민지에 전달되며 나머지 함선은 귀환합니다. 정찰 보고서에서 지형과 사용 가능 면적을 먼저 확인할 수 있습니다.</p>' : ''}
+      ${mission === 'colonize' ? '<p class="detail-muted">도착 시 식민선 1척으로 개척합니다. 적재 자원과 나머지 함선은 새 식민지에 배치되며 함대는 그곳에 정착합니다. 정찰 보고서에서 지형과 사용 가능 면적을 먼저 확인할 수 있습니다.</p>' : ''}
       <details class="combat-cargo"><summary>자원 적재</summary><div class="field-row cols-3">${[['metal','금속'],['crystal','수정'],['deuterium','중수소']].map(([id,label])=>`<label class="field">${label}<input type="number" data-cargo="${id}" min="0" step="1" value="${escapeHtml(cargo[id] || '0')}" inputmode="numeric"></label>`).join('')}</div></details>
       <div class="confirm-actions">
         <button type="button" class="cmd-btn" data-confirm="cancel" ${this.launching?'disabled':''}>취소</button>

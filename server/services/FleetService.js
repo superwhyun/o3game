@@ -187,6 +187,33 @@ async function launch(userId, input) {
     throw error;
   }
 }
+async function settleColony(owner, movement, colony) {
+  const ships = Object.fromEntries(Object.entries(plain(movement.fleet)).filter(([,n]) => n > 0));
+  for (const [id, n] of Object.entries(ships)) colony.fleet[id] = (colony.fleet[id] || 0) + n;
+  for (const [id, n] of Object.entries(plain(movement.cargo))) colony.resources[id] = (colony.resources[id] || 0) + n;
+  movement.cargo = { metal: 0, crystal: 0, deuterium: 0 };
+  movement.targetPlanetId = colony._id;
+  movement.targetUserId = owner._id;
+  movement.status = "completed";
+  movement.returnStartTime = null;
+  movement.returnTime = null;
+  movement.notice = "식민지 개척 완료 · 함대가 새 식민지에 정착했습니다.";
+  const formation = owner.fleetFormations.id(movement.formationId);
+  if (formation && sameId(formation.activeMovementId, movement._id)) {
+    formation.originPlanetId = colony._id;
+    formation.ships = ships;
+    formation.status = "ready";
+    formation.activeMovementId = null;
+    formation.revision++;
+    formation.notice = Object.keys(ships).length
+      ? "새 식민지에 정착했습니다. 이 행성에서 출격할 수 있습니다."
+      : "식민선을 개척에 사용했습니다. 새 식민지에서 다시 편성하십시오.";
+  }
+  owner.markModified("planets");
+  await owner.save();
+  await movement.save();
+  return [String(owner._id)];
+}
 async function processMovement(id, now = new Date()) {
   const pending = await FleetMovement.findById(id).select("formationId mission").lean();
   if (pending?.mission === "spy") return require("./ScoutService").processMovement(id, now);
@@ -199,11 +226,16 @@ async function processMovement(id, now = new Date()) {
       movement.status === "returning"
         ? movement.returnTime
         : movement.arrivalTime;
-    if (+dueTime > +now) return [];
+    const legacySettlement = movement.mission === "colonize" && movement.status === "returning" && movement.notice.startsWith("식민지 개척 완료");
+    if (+dueTime > +now && !legacySettlement) return [];
     const owner = (
       await require("./GameStateService").settleUserState(movement.userId, now)
     )?.user;
     if (!owner) return [];
+    if (legacySettlement) {
+      const colony = owner.planets.find(p => sameCoords(p, movement.destination));
+      if (colony) return settleColony(owner, movement, colony);
+    }
     if (movement.status === "returning") {
       if (+movement.returnTime > +now) return [];
       const origin = owner.planets.find((p) =>
@@ -258,8 +290,9 @@ async function processMovement(id, now = new Date()) {
           lastUpdate: now,
         });
         movement.fleet = { ...plain(movement.fleet), colonyShip: movement.fleet.colonyShip - 1 };
+        // Resources were placed on the new planet above; settlement only adds ships.
         movement.cargo = { metal: 0, crystal: 0, deuterium: 0 };
-        movement.notice = "식민지 개척 완료 · 식민선 1척을 사용했습니다.";
+        return settleColony(owner, movement, owner.planets[owner.planets.length - 1]);
       }
       movement.status = "returning";
       movement.returnStartTime = now;

@@ -258,7 +258,8 @@ class SocketHandlers {
       const now = new Date();
       const movements = await FleetMovement.find({ $or: [
         { status: 'flying', arrivalTime: { $lte: now } },
-        { status: 'returning', returnTime: { $lte: now } }
+        { status: 'returning', returnTime: { $lte: now } },
+        { status: 'returning', mission: 'colonize', notice: /^식민지 개척 완료/ }
       ] }).select('_id');
       for (const movement of movements) {
         try {

@@ -304,8 +304,16 @@ test('colony fleet drag onto unclaimed planet creates colony and consumes one co
   await expect.poll(async () => (await User.findById(fixture.user.id)).planets.length, { timeout: 30000 }).toBe(2);
   await expect(page.locator('[data-movement]')).toHaveCount(0, { timeout: 30000 });
   const user = await User.findById(fixture.user.id);
-  expect(user.planets[0].fleet.colonyShip).toBe(1);
+  expect(user.planets[0].fleet.colonyShip).toBe(0);
+  expect(user.planets[1].fleet.colonyShip).toBe(1);
   expect(user.planets[1].planet).toBe(9);
+  expect(String(user.fleetFormations[0].originPlanetId)).toBe(String(user.planets[1]._id));
+  const Movement = require('../../server/models/FleetMovement');
+  const mission = await Movement.findOne({userId:user._id,mission:'colonize'});
+  expect(mission.status).toBe('completed');expect(mission.returnTime).toBeNull();
   await page.reload();
   await expect(page.locator('#planet-select option')).toHaveCount(2);
+  await page.locator('#planet-select').selectOption('1');
+  await page.locator('.holo-btn[data-view="combat"]').click();
+  await expect(page.locator('[data-combat-fleet]')).toHaveCount(1);
 });

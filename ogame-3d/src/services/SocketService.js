@@ -1,5 +1,6 @@
 import { io } from 'socket.io-client';
 import { EventEmitter } from '../utils/EventEmitter.js';
+import { SERVER_URL } from './serverUrl.js';
 
 class SocketService extends EventEmitter {
   constructor() {
@@ -12,8 +13,6 @@ class SocketService extends EventEmitter {
   
   connect(token) {
     if (this.socket?.connected) return;
-    
-    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
     
     this.socket = io(SERVER_URL, {
       transports: ['websocket'],

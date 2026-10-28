@@ -317,8 +317,31 @@
 
 .users-table {
   width: 100%;
+  min-width: 960px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--text-sm);
+}
+
+.users-table .col-username { width: 20%; }
+.users-table .col-status { width: 9%; }
+.users-table .col-planets { width: 6%; }
+.users-table .col-resources { width: 31%; }
+.users-table .col-lastlogin { width: 13%; }
+.users-table .col-actions { width: 21%; }
+
+.users-table .user-name,
+.users-table .user-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.users-table .user-detail-link {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .users-table th {
@@ -376,10 +399,34 @@
 .user-status.offline { color: var(--text-faint); }
 
 .user-resources {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   font-variant-numeric: tabular-nums;
   font-size: var(--text-xs);
+}
+
+.user-resource {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.user-resource > span {
+  text-align: right;
+}
+
+.user-resource .res-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  flex: 0 0 auto;
+  color: inherit;
 }
 
 .user-resources .res-m { color: var(--res-metal); }

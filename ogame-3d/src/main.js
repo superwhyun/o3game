@@ -2,6 +2,8 @@ import * as GameData from './data/gameData.js';
 import { gameState } from './core/GameState.js';
 import { SpaceScene } from './core/SpaceScene.js';
 import { UIManager } from './ui/UIManager.js';
+import { installTouchNumbers } from './ui/TouchNumbers.js';
+import './ui/touch-controls.css';
 
 window.GameData = GameData;
 window.gameState = gameState;
@@ -97,6 +99,7 @@ class CosmicEmpire {
 window.uiManager = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
+  installTouchNumbers();
   const token = localStorage.getItem('token');
   
   // UIManager는 항상 초기화 (로그인 화면 처리용)
@@ -123,7 +126,7 @@ window.initGame = () => {
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && window.uiManager) {
-    window.uiManager.syncUserDataFromServer();
+    window.uiManager.syncUserDataFromServer({ minAge: 15000 });
   }
 });
 

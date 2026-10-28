@@ -13,6 +13,7 @@ const ORBIT = { inner: 74, step: 26, tilt: 0.6 };
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const BASE_SPEED = 0.15; // rad/s on the innermost orbit
 const FRAME_MS = 33;
+let nextChartId = 0;
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -34,6 +35,12 @@ export function relationOf(position) {
   return position.owner === 'self' ? 'own' : 'other';
 }
 
+export function planetNameOf(position) {
+  if (!position?.occupied) return '미점령 행성';
+  if (position.owner === 'self' || position.scouted) return position.planet?.name || '이름 미확인 행성';
+  return '미정찰 행성';
+}
+
 export class OrbitChart {
   /**
    * @param {HTMLElement} container
@@ -41,6 +48,8 @@ export class OrbitChart {
    */
   constructor(container, { onSelect, label = '성계 궤도도' } = {}) {
     this.container = container;
+    // SVG paint references resolve document-wide, even across hidden panels.
+    this.paintPrefix = `orbit-chart-${++nextChartId}`;
     this.onSelect = onSelect;
     this.coords = null;
     this.positions = [];
@@ -57,7 +66,7 @@ export class OrbitChart {
       <header class="orbit-caption"><strong></strong><span></span></header>
       <svg class="orbit-svg" viewBox="0 0 ${VIEW.width} ${VIEW.height}" role="group" aria-label="${escapeHtml(label)}"></svg>
       <div class="orbit-legend" aria-hidden="true">
-        <span class="legend-own">아군</span><span class="legend-other">타 제국</span><span class="legend-empty">미점령 행성</span>
+        <span class="legend-own">아군</span><span class="legend-other">타 제국</span><span class="legend-pirate">해적</span><span class="legend-surveyed">정찰한 미점령 행성</span><span class="legend-empty">미정찰</span>
       </div>`;
     this.svg = container.querySelector('.orbit-svg');
     this.caption = container.querySelector('.orbit-caption');
@@ -161,15 +170,17 @@ export class OrbitChart {
 
     this.svg.innerHTML = `
       <defs>
-        <radialGradient id="star-core"><stop offset="0" stop-color="#fff8e6"/><stop offset="0.45" stop-color="#f3d79a"/><stop offset="1" stop-color="#c8a96a" stop-opacity="0"/></radialGradient>
-        <radialGradient id="star-halo"><stop offset="0" stop-color="#e6cf98" stop-opacity="0.35"/><stop offset="1" stop-color="#e6cf98" stop-opacity="0"/></radialGradient>
-        <radialGradient id="planet-own" cx="0.35" cy="0.35"><stop offset="0" stop-color="#fbe9bd"/><stop offset="0.55" stop-color="#c8a96a"/><stop offset="1" stop-color="#5a4826"/></radialGradient>
-        <radialGradient id="planet-other" cx="0.35" cy="0.35"><stop offset="0" stop-color="#c9d9ee"/><stop offset="0.55" stop-color="#5f7fa8"/><stop offset="1" stop-color="#1b2840"/></radialGradient>
+        <radialGradient id="${this.paintPrefix}-star-core"><stop offset="0" stop-color="#fff8e6"/><stop offset="0.45" stop-color="#f3d79a"/><stop offset="1" stop-color="#c8a96a" stop-opacity="0"/></radialGradient>
+        <radialGradient id="${this.paintPrefix}-star-halo"><stop offset="0" stop-color="#e6cf98" stop-opacity="0.35"/><stop offset="1" stop-color="#e6cf98" stop-opacity="0"/></radialGradient>
+        <radialGradient id="${this.paintPrefix}-planet-own" cx="0.35" cy="0.35"><stop offset="0" stop-color="#fbe9bd"/><stop offset="0.55" stop-color="#c8a96a"/><stop offset="1" stop-color="#5a4826"/></radialGradient>
+        <radialGradient id="${this.paintPrefix}-planet-pirate" cx="0.35" cy="0.35"><stop offset="0" stop-color="#ffd2a4"/><stop offset="0.55" stop-color="#c76a45"/><stop offset="1" stop-color="#431f26"/></radialGradient>
+        <radialGradient id="${this.paintPrefix}-planet-other" cx="0.35" cy="0.35"><stop offset="0" stop-color="#c9d9ee"/><stop offset="0.55" stop-color="#5f7fa8"/><stop offset="1" stop-color="#1b2840"/></radialGradient>
+        <radialGradient id="${this.paintPrefix}-planet-empty" cx="0.35" cy="0.35"><stop offset="0" stop-color="#d1e2d8"/><stop offset="0.55" stop-color="#668c7e"/><stop offset="1" stop-color="#233e35"/></radialGradient>
       </defs>
       <g class="orbit-spokes">${spokes}</g>
-      <circle class="star-halo" cx="${cx}" cy="${cy}" r="70" fill="url(#star-halo)"/>
+      <circle class="star-halo" cx="${cx}" cy="${cy}" r="70" fill="url(#${this.paintPrefix}-star-halo)"/>
       <g class="orbits">${orbits}</g>
-      <circle class="star-core" cx="${cx}" cy="${cy}" r="24" fill="url(#star-core)"/>
+      <circle class="star-core" cx="${cx}" cy="${cy}" r="24" fill="url(#${this.paintPrefix}-star-core)"/>
       <g class="slots">${slots}</g>`;
     this.slotEls = [...this.svg.querySelectorAll('.slot')];
 
@@ -182,21 +193,21 @@ export class OrbitChart {
 
   slotMarkup(position) {
     const relation = relationOf(position);
-    const { galaxy, system } = this.coords;
-    const seed = hash01(`${galaxy}:${system}:${position.position}`);
-    const radius = relation === 'empty' ? 6 : 11 + seed * 7;
-    const label = position.planet
+    const known = relation === 'own' || position.scouted;
+    // Only our own live data or observed terrain may reveal a diameter.
+    const diameter = Number(relation === 'own' ? position.planet?.diameter ?? position.survey?.diameter : position.survey?.diameter);
+    const radius = known ? (Number.isFinite(diameter) && diameter > 0 ? diameter * 18 / 20000 : 12) : 6;
+    const label = known && position.planet?.name
       ? `<text class="slot-label" y="${-radius - 12}">${escapeHtml(position.planet.name)}</text>
          <text class="slot-sublabel" y="${radius + 26}">${escapeHtml(position.planet.username)}</text>`
       : '';
-    const body = relation === 'empty'
+    const visualRelation = position.planet?.isPirate ? 'pirate' : relation;
+    const body = !known
       ? '<rect class="slot-marker" x="-5" y="-5" width="10" height="10" transform="rotate(45)"/>'
-      : `<circle class="slot-planet planet-${relation}" r="${radius}"/>
+      : `<circle class="slot-planet planet-${visualRelation}" r="${radius}" fill="url(#${this.paintPrefix}-planet-${visualRelation})"/>
          <circle class="slot-atmo" r="${radius + 3}"/>`;
-    const name = position.planet
-      ? `${position.position}궤도 ${position.planet.name} (${position.planet.username})`
-      : `${position.position}궤도 미점령 행성`;
-    return `<g class="slot slot-${relation} ${position.position === this.selected ? 'is-selected' : ''}" data-slot="${position.position}"
+    const name = `${position.position}궤도 ${planetNameOf(position)}${position.scouted ? ' · 정찰 확인' : ''}`;
+    return `<g class="slot slot-${relation} ${position.planet?.isPirate ? 'slot-pirate' : ''} ${position.position === this.selected ? 'is-selected' : ''}" data-slot="${position.position}"
         tabindex="0" role="button" aria-label="${escapeHtml(name)}">
         <circle class="slot-hit" r="${Math.max(radius + 12, 20)}"/>
         <circle class="slot-ring" r="${radius + 8}"/>
@@ -204,7 +215,7 @@ export class OrbitChart {
       </g>`;
   }
 
-  /** Position each slot on its orbit; the nearer (lower) half is drawn slightly larger. */
+  /** Position each slot without changing the observed diameter ratio. */
   place(time) {
     if (!this.slotEls || !this.coords) return;
     const { galaxy, system } = this.coords;
@@ -214,9 +225,8 @@ export class OrbitChart {
       const slot = Number(el.dataset.slot);
       const { rx, ry } = orbitRadius(slot);
       const angle = phase + slot * GOLDEN_ANGLE + (time * BASE_SPEED) / Math.sqrt(slot);
-      const depth = 0.88 + 0.12 * ((Math.sin(angle) + 1) / 2);
       this.slotPoints.set(slot, { x: VIEW.cx + Math.cos(angle) * rx, y: VIEW.cy + Math.sin(angle) * ry });
-      el.setAttribute('transform', `translate(${(VIEW.cx + Math.cos(angle) * rx).toFixed(1)} ${(VIEW.cy + Math.sin(angle) * ry).toFixed(1)}) scale(${depth.toFixed(3)})`);
+      el.setAttribute('transform', `translate(${(VIEW.cx + Math.cos(angle) * rx).toFixed(1)} ${(VIEW.cy + Math.sin(angle) * ry).toFixed(1)})`);
     }
     this.onPlace?.();
   }

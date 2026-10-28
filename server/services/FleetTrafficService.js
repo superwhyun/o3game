@@ -1,8 +1,9 @@
+const {apiError}=require('../utils/apiErrors');
 const mongoose = require('mongoose');
 const Movement = require('../models/FleetMovement');
 const { GALAXY_COUNT, SYSTEM_COUNT } = require('../utils/universe');
 function scope(galaxy, system) {
-  if (!Number.isSafeInteger(galaxy) || galaxy < 1 || galaxy > GALAXY_COUNT || !Number.isSafeInteger(system) || system < 1 || system > SYSTEM_COUNT) throw new RangeError('성계 좌표가 올바르지 않습니다.');
+  if (!Number.isSafeInteger(galaxy) || galaxy < 1 || galaxy > GALAXY_COUNT || !Number.isSafeInteger(system) || system < 1 || system > SYSTEM_COUNT) throw apiError(400, 'INVALID_REQUEST', '성계 좌표가 올바르지 않습니다.');
   return { status: { $in: ['flying', 'returning'] }, $or: [{ 'origin.galaxy': galaxy, 'origin.system': system }, { 'destination.galaxy': galaxy, 'destination.system': system }] };
 }
 function projection(galaxy, system) {
@@ -21,27 +22,27 @@ async function list(userId, query) {
   const galaxy = Number(query.galaxy), system = Number(query.system);
   const match = scope(galaxy, system);
   const limit = query.limit === undefined ? 50 : Number(query.limit);
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RangeError('목록 크기가 올바르지 않습니다.');
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw apiError(400, 'INVALID_REQUEST', '목록 크기가 올바르지 않습니다.');
   const pipeline = [{ $match: match }, ...projection(galaxy, system)];
   const detail = [...pipeline];
   if (query.route) {
-    if (typeof query.route !== 'string' || query.route.length > 1024) throw new RangeError('항로가 올바르지 않습니다.');
+    if (typeof query.route !== 'string' || query.route.length > 1024) throw apiError(400, 'INVALID_REQUEST', '항로가 올바르지 않습니다.');
     let route;
-    try { route = JSON.parse(Buffer.from(query.route, 'base64url').toString()); } catch { throw new RangeError('항로가 올바르지 않습니다.'); }
-    if (!route || typeof route.ownerKey !== 'string' || !['flying','returning'].includes(route.status)) throw new RangeError('항로가 올바르지 않습니다.');
+    try { route = JSON.parse(Buffer.from(query.route, 'base64url').toString()); } catch { throw apiError(400, 'INVALID_REQUEST', '항로가 올바르지 않습니다.'); }
+    if (!route || typeof route.ownerKey !== 'string' || !['flying','returning'].includes(route.status)) throw apiError(400, 'INVALID_REQUEST', '항로가 올바르지 않습니다.');
     const routeMatch = { ownerKey: route.ownerKey, status: route.status };
     for (const key of ['from', 'to']) {
       const point = route[key];
-      if (!point || typeof point !== 'object') throw new RangeError('항로가 올바르지 않습니다.');
+      if (!point || typeof point !== 'object') throw apiError(400, 'INVALID_REQUEST', '항로가 올바르지 않습니다.');
       const fields = point.planet === undefined ? ['galaxy','system'] : ['planet'];
-      if (Object.keys(point).length !== fields.length || fields.some(field=>!Number.isSafeInteger(point[field]) || point[field]<1)) throw new RangeError('항로가 올바르지 않습니다.');
+      if (Object.keys(point).length !== fields.length || fields.some(field=>!Number.isSafeInteger(point[field]) || point[field]<1)) throw apiError(400, 'INVALID_REQUEST', '항로가 올바르지 않습니다.');
       for (const field of fields) routeMatch[`${key}.${field}`] = point[field];
       routeMatch[`${key}.${point.planet === undefined ? 'planet' : 'galaxy'}`] = { $exists: false };
     }
     detail.push({ $match: routeMatch });
   }
   if (query.cursor) {
-    if (!mongoose.isValidObjectId(query.cursor)) throw new RangeError('페이지 위치가 올바르지 않습니다.');
+    if (!mongoose.isValidObjectId(query.cursor)) throw apiError(400, 'INVALID_REQUEST', '페이지 위치가 올바르지 않습니다.');
     detail.push({ $match: { _id: { $gt: new mongoose.Types.ObjectId(query.cursor) } } });
   }
   const [groups, rows] = await Promise.all([

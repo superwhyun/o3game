@@ -1,3 +1,4 @@
+const { calculatePopulation } = require('./populationEconomy');
 const { productionModifiers } = require('./planetArea');
 const GameConfig = require('../models/GameConfig');
 const entityConfigService = require('../services/EntityConfigService');
@@ -43,10 +44,33 @@ function calculateStorage(planet, config = null) {
     }
   }
 
+  const population = calculatePopulation(planet, config || {});
+  if (population) storage.food = population.foodCapacity;
   return storage;
 }
 
-function calculateProduction(planet, speed = 1, resourceSettings = {}) {
+function calculateEnergyState(planet) {
+  const modifiers = productionModifiers(planet);
+  let production = 0, consumption = 0;
+  const sources = [];
+  for (const definition of entityConfigService.listByType('building')) {
+    const level = planet.buildings?.[definition.entityId] || 0;
+    const amount = evaluateScaledFormula(definition.effects?.energyProduction?.amount, level) * (definition.entityId === 'solarPlant' ? modifiers.solar : 1);
+    production += amount;
+    if (amount > 0) sources.push({ id: definition.entityId, name: definition.display?.name || definition.entityId, amount });
+    consumption += evaluateScaledFormula(definition.effects?.energyConsumption?.amount, level);
+  }
+  const satellites = Math.max(0, Math.floor(Number(planet.fleet?.solarSatellite) || 0));
+  // Static power, unaffected by server speed. Warm planets yield more power.
+  const satellitePerUnit = Math.max(0, Math.floor(((planet.maxTemp ?? 40) + 160) / 6));
+  const satelliteProduction = satellites * satellitePerUnit;
+  production += satelliteProduction;
+  sources.push({ id: 'solarSatellite', name: '태양광 인공위성', count: satellites, perUnit: satellitePerUnit, amount: satelliteProduction });
+  return { production, consumption, balance: production - consumption, sources };
+}
+
+function calculateProduction(planet, speed = 1, resourceSettings = {}, config = {}) {
+  const population = calculatePopulation(planet, { populationSettings: config.populationSettings, serverSpeed: speed });
   const baseProd = resourceSettings.baseProduction || {};
   const production = {
     metal: (baseProd.metal ?? 30) * speed,
@@ -57,8 +81,6 @@ function calculateProduction(planet, speed = 1, resourceSettings = {}) {
   const multiplier = resourceSettings.productionMultiplier ?? 1;
   const modifiers = productionModifiers(planet);
 
-  let energyProduction = 0;
-  let energyConsumption = 0;
   const definitions = entityConfigService.listByType('building');
 
   for (const definition of definitions) {
@@ -67,61 +89,89 @@ function calculateProduction(planet, speed = 1, resourceSettings = {}) {
 
     if (definition.effects?.production) {
       for (const [resource, rule] of Object.entries(definition.effects.production)) {
-        production[resource] += evaluateScaledFormula(rule, level) * (modifiers[resource] ?? 1) * multiplier * speed;
+        const staffing = population?.jobs[definition.entityId]?.ratio ?? 1;
+        const efficiency = population && definition.effects?.population?.jobsPerLevel ? staffing * population.productionMultiplier : 1;
+        production[resource] += evaluateScaledFormula(rule, level) * (modifiers[resource] ?? 1) * multiplier * speed * efficiency;
       }
     }
 
-    if (definition.effects?.energyProduction?.amount) {
-      energyProduction += evaluateScaledFormula(definition.effects.energyProduction.amount, level) * (definition.entityId === 'solarPlant' ? modifiers.solar : 1);
-    }
-
-    if (definition.effects?.energyConsumption?.amount) {
-      energyConsumption += evaluateScaledFormula(definition.effects.energyConsumption.amount, level);
-    }
   }
 
-  production.energy = energyProduction - energyConsumption;
+  for (const resource of ['metal', 'deuterium']) production[resource] -= planet.$locals?.fleetSupport?.hourly?.[resource] || 0;
+  if (population) production.food = population.foodNet;
+  production.energy = calculateEnergyState(planet).balance;
   return production;
 }
 
 function clampResourcesToStorage(resources, storage) {
-  resources.metal = Math.min(isNaN(resources.metal) ? 0 : (resources.metal || 0), storage.metal);
+  resources.metal = Math.max(0, Math.min(isNaN(resources.metal) ? 0 : (resources.metal || 0), storage.metal));
   resources.crystal = Math.min(isNaN(resources.crystal) ? 0 : (resources.crystal || 0), storage.crystal);
-  resources.deuterium = Math.min(isNaN(resources.deuterium) ? 0 : (resources.deuterium || 0), storage.deuterium);
+  resources.deuterium = Math.max(0, Math.min(isNaN(resources.deuterium) ? 0 : (resources.deuterium || 0), storage.deuterium));
+  if (storage.food !== undefined) resources.food = Math.max(0, Math.min(Number.isFinite(resources.food) ? resources.food : 0, storage.food));
   resources.energy = isNaN(resources.energy) ? 0 : (resources.energy || 0);
 }
 
 function applyOfflineProduction(planet, config, now = new Date()) {
   const speed = config.serverSpeed || 1;
   const storage = calculateStorage(planet, config);
-  const production = calculateProduction(planet, speed, config.resourceSettings || {});
-  
-  const lastUpdateRaw = planet.lastUpdate || now;
-  const lastUpdate = new Date(lastUpdateRaw);
-  
-  // Ensure lastUpdate is a valid date
-  let hoursOffline = 0;
-  if (!isNaN(lastUpdate.getTime())) {
-    hoursOffline = Math.max(0, (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60));
-  }
-  
-  // Final safeguard for hoursOffline
-  if (isNaN(hoursOffline)) hoursOffline = 0;
-
-  if (hoursOffline > 0 && hoursOffline < 168) {
-    planet.resources.metal = (planet.resources.metal || 0) + (production.metal * hoursOffline);
-    planet.resources.crystal = (planet.resources.crystal || 0) + (production.crystal * hoursOffline);
-    planet.resources.deuterium = (planet.resources.deuterium || 0) + (production.deuterium * hoursOffline);
-  }
-
+  const rawLast = new Date(planet.lastUpdate || now).getTime();
+  const requested = new Date(now).getTime();
+  const last = Number.isFinite(rawLast) ? rawLast : requested;
+  const end = Number.isFinite(requested) ? Math.max(requested, last) : last;
+  let remaining = Math.max(0, (end - last) / 3600000);
   clampResourcesToStorage(planet.resources, storage);
-  planet.resources.energy = production.energy;
-  planet.lastUpdate = now;
 
-  return {
-    storage,
-    production
-  };
+  // Rates are constant between births, food exhaustion and queue completions.
+  // Integrate those events rather than request-sized ticks, so repeated reads
+  // and one long offline settlement produce the same state.
+  while (remaining > 1e-12) {
+    const population = calculatePopulation(planet, config);
+    const production = calculateProduction(planet, speed, config.resourceSettings || {}, config);
+    let hours = remaining;
+    let birthHours = Infinity;
+    let emptyHours = Infinity;
+    let deathHours = Infinity;
+    if (population?.starving && population.count > 0) {
+      deathHours = (1 - population.starvationProgress) * population.starvationHours;
+      hours = Math.min(hours, deathHours);
+    } else if (population) planet.population.starvationProgress = 0;
+    if (population?.growthAllowed) {
+      birthHours = Math.max(0, (1 - planet.population.growthProgress) * population.growthHours);
+      hours = Math.min(hours, birthHours);
+    }
+    if (population && production.food < -1e-9 && planet.resources.food > 1e-9) {
+      emptyHours = planet.resources.food / -production.food;
+      hours = Math.min(hours, emptyHours);
+    }
+    for (const resource of ['metal', 'crystal', 'deuterium']) {
+      planet.resources[resource] = (planet.resources[resource] || 0) + production[resource] * hours;
+    }
+    if (population) {
+      planet.resources.food += production.food * hours;
+      if (population.growthAllowed) planet.population.growthProgress += hours / population.growthHours;
+      if (population.starving && population.count > 0) {
+        planet.population.starvationProgress = population.starvationProgress + hours / population.starvationHours;
+        if (deathHours <= hours + 1e-12) {
+          planet.population.count = Math.max(0, planet.population.count - 1);
+          planet.population.starvationProgress = 0;
+        }
+      }
+      if (birthHours <= hours + 1e-12) {
+        planet.population.count += 1;
+        planet.population.growthProgress = 0;
+      }
+      if (emptyHours <= hours + 1e-12) planet.resources.food = 0;
+    }
+    clampResourcesToStorage(planet.resources, storage);
+    remaining = Math.max(0, remaining - hours);
+  }
+  if (!calculatePopulation(planet, config)?.starving) {
+    if (planet.population) planet.population.starvationProgress = 0;
+  }
+  const production = calculateProduction(planet, speed, config.resourceSettings || {}, config);
+  planet.resources.energy = production.energy;
+  planet.lastUpdate = new Date(end);
+  return { storage, production };
 }
 
 async function applyPlanetEconomyState(planet, config = null) {
@@ -130,6 +180,7 @@ async function applyPlanetEconomyState(planet, config = null) {
 }
 
 module.exports = {
+  calculateEnergyState,
   calculateProduction,
   calculateStorage,
   clampResourcesToStorage,

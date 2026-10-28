@@ -10,7 +10,7 @@ test('normalizeAdminUserUpdate accepts supported admin and resource fields', () 
     isAdmin: true,
     adminRole: 'moderator',
     planetIndex: 1,
-    resources: { metal: 100, crystal: 200, deuterium: 300, energy: 0 }
+    resources: { metal: 100, crystal: 200, deuterium: 300, food: 0 }
   }, 2);
 
   assert.deepEqual(update, {
@@ -19,7 +19,7 @@ test('normalizeAdminUserUpdate accepts supported admin and resource fields', () 
     isAdmin: true,
     adminRole: 'moderator',
     planetIndex: 1,
-    resources: { metal: 100, crystal: 200, deuterium: 300, energy: 0 }
+    resources: { metal: 100, crystal: 200, deuterium: 300, food: 0 }
   });
 });
 
@@ -44,6 +44,12 @@ test('normalizeAdminUserUpdate rejects invalid roles, planets, and resources', (
     () => normalizeAdminUserUpdate({ isAdmin: true, adminRole: null }, 1),
     /must have an admin role/
   );
+});
+
+test('normalizeAdminUserUpdate rejects manual energy overrides, including zero', () => {
+  for (const energy of [0, 100, -100]) {
+    assert.throws(() => normalizeAdminUserUpdate({ planetIndex: 0, resources: { energy } }, 1), /Invalid resource: energy/);
+  }
 });
 
 test('normalizeAdminUserUpdate clears a role when admin access is removed', () => {

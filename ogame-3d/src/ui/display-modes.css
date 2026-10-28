@@ -1,0 +1,95 @@
+.dashboard-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.dashboard-content .dashboard-grid {
+  overflow: visible;
+}
+.mode-graphics {
+  display: none;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 18px;
+}
+[data-ui-mode="graphics"] .mode-graphics {
+  display: grid;
+}
+[data-ui-mode="graphics"] #dashboard-panel .population-card,
+[data-ui-mode="graphics"] #dashboard-panel .stats-card {
+  display: none;
+}
+.mode-graphics .holo-card {
+  padding: 16px;
+  min-width: 0;
+}
+.mode-graphics h3 {
+  color: var(--gold);
+  margin: 0 0 12px;
+}
+.mode-bar {
+  margin: 12px 0;
+}
+.mode-bar > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+.mode-bar progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--gold);
+}
+.production-graph {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+  font-size: 12px;
+}
+.production-track {
+  background: var(--line);
+  height: 12px;
+}
+.production-track > div {
+  height: 100%;
+  background: var(--ok);
+}
+.production-graph.is-negative .production-track > div {
+  background: var(--alert);
+}
+.production-graph.is-negative strong {
+  color: var(--alert);
+}
+[data-ui-mode="simple"] .detail-media,
+[data-ui-mode="simple"] .model-tier,
+[data-ui-mode="simple"] .entity-browser .detail-desc,
+[data-ui-mode="simple"] .entity-browser .detail-full-only {
+  display: none;
+}
+[data-ui-mode="simple"] .entity-browser .detail-hero {
+  display: block;
+}
+[data-ui-mode="simple"] .panel-sub,
+[data-ui-mode="simple"] .activity-card,
+[data-ui-mode="simple"] .chart-card {
+  display: none;
+}
+[data-ui-mode="simple"] .entity-browser .detail-intro {
+  padding-bottom: 0;
+}
+[data-ui-mode="detailed"] .chart-card {
+  display: none;
+}
+[data-ui-mode="simple"] .metrics-grid .metric-bar,
+[data-ui-mode="detailed"] .metrics-grid .metric-bar {
+  display: none;
+}
+@media (max-width: 768px) {
+  .mode-graphics {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+}

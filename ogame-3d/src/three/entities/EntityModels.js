@@ -435,6 +435,12 @@ function tanks(k, t) {
   }
 }
 export const BUILDERS = {
+  // Civil facilities reuse established structural models and tier behavior.
+  housing: (k, t) => storage(k, t, false),
+  hydroponicFarm: synthesis,
+  cultureCenter: laboratory,
+  school: laboratory,
+  clinic: laboratory,
   metalMine: (k, t) => mine(k, t, false),
   crystalMine: (k, t) => mine(k, t, true),
   deuteriumSynthesizer: synthesis,
@@ -498,6 +504,11 @@ function engine(k, kind) {
   }
 }
 export const EXPERIMENTS = {
+  urbanPlanning: k => EXPERIMENTS.terraforming(k),
+  agriculturalTechnology: k => EXPERIMENTS.energyTechnology(k),
+  educationTechnology: k => EXPERIMENTS.computerTechnology(k),
+  medicalTechnology: k => EXPERIMENTS.energyTechnology(k),
+  socialPolicy: k => EXPERIMENTS.computerTechnology(k),
   terraforming(k) {
     k.ball(1.25, 0, 1.45, 0, 'blue');
     for (let i = 0; i < 5; i++) {

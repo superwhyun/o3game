@@ -1,0 +1,43 @@
+/* Planet controls above navigation; account controls at the sidebar foot. */
+@media (min-width: 1201px) {
+  .holo-sidebar.left { display: flex; flex-direction: column; }
+  .holo-sidebar.left > * { flex-shrink: 0; }
+}
+.holo-sidebar.left .command-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin: 0 12px 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.command-controls .planet-switcher { min-width: 0; }
+.holo-sidebar.left .command-controls .planet-switcher #planet-select {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+}
+.holo-sidebar.left .command-controls .planet-rename-button { padding-inline: 6px; }
+.holo-sidebar.left .command-controls .time-display { display: grid; text-align: left; gap: 4px; }
+.holo-sidebar.left > .sidebar-account { margin-top: auto; padding-top: 16px; }
+.holo-sidebar.left .sidebar-account > .user-section { margin: 8px 12px 0; }
+.holo-sidebar.left .sidebar-account > .user-section .user-info { width: 100%; justify-content: space-between; min-width: 0; }
+.holo-sidebar.left .sidebar-account > .user-section .username { max-width: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.holo-sidebar.left .sidebar-account > .user-section .holo-btn-small { flex-shrink: 0; min-height: 44px; }
+@media (max-width: 1200px) {
+  .holo-header .command-controls { order: 2; }
+  .holo-sidebar.left > .sidebar-account {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: stretch;
+    gap: 4px;
+    margin-top: 0;
+    padding-top: 0;
+  }
+}
+
+.formation-scope { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 0 16px; color:var(--text-faint); font-size:12px; }
+.formation-scope label { display:flex; align-items:center; gap:10px; white-space:nowrap; }
+.formation-scope select { background:var(--ink-1); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; }
+@media(max-width:700px) { .formation-scope { flex-wrap:wrap; gap:8px; } }

@@ -14,6 +14,8 @@ const {
   POSITION_COUNT,
 } = require("../utils/universe");
 const router = express.Router();
+const { apiContext, errorHandler } = require('../utils/apiErrors');
+router.use(apiContext, require('../middleware/apiValidation').apiValidation('/api/game'));
 router.post("/scouts", authMiddleware, async (req, res) => {
   try {
     const movement = await scouts.launch(req.user._id, req.body);
@@ -34,14 +36,13 @@ router.post("/scouts", authMiddleware, async (req, res) => {
         snapshotPending: !snapshot,
       });
   } catch (error) {
-    res
-      .status(error.statusCode || (error.name === "VersionError" ? 409 : 500))
-      .json({ error: error.message, code: error.code || "SCOUT_FAILED" });
+    throw error;
   }
 });
 const publicReport = (r) => ({
   id: r._id,
   movementId: r.movementId,
+  ownerRead: !!r.ownerRead,
   origin: r.origin,
   destination: r.destination,
   observedAt: r.observedAt,
@@ -49,9 +50,10 @@ const publicReport = (r) => ({
   targetUserId: r.targetUserId,
   targetName: r.targetName,
   targetCommander: r.targetCommander,
+  ...(r.pirateLevel ? {pirateLevel:r.pirateLevel} : {}),
   outcome: r.outcome,
   informationTier: r.informationTier,
-  sections: r.sections,
+  sections: r.sections?.environment ? { ...r.sections, environment: { ...r.sections.environment, maxTotal: require("../utils/colonizationRules").MAX_PLANET_AREA } } : r.sections,
   detected: r.detected,
   intercepted: r.intercepted,
   initialProbeCount: r.initialProbeCount,
@@ -60,17 +62,17 @@ const publicReport = (r) => ({
 function page(query, filter) {
   const limit = query.limit === undefined ? 20 : Number(query.limit);
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50)
-    throw Error("목록 크기가 올바르지 않습니다.");
+    throw require('../utils/apiErrors').apiError(400, 'INVALID_REQUEST', "목록 크기가 올바르지 않습니다.");
   if (query.cursor) {
     let cursor;
     try {
       cursor = JSON.parse(Buffer.from(query.cursor, "base64url").toString());
     } catch {
-      throw Error("페이지 위치가 올바르지 않습니다.");
+      throw require('../utils/apiErrors').apiError(400, 'INVALID_REQUEST', "페이지 위치가 올바르지 않습니다.");
     }
     const date = new Date(cursor.time);
     if (!mongoose.isValidObjectId(cursor.id) || !Number.isFinite(+date))
-      throw Error("페이지 위치가 올바르지 않습니다.");
+      throw require('../utils/apiErrors').apiError(400, 'INVALID_REQUEST', "페이지 위치가 올바르지 않습니다.");
     filter.$or = [
       { observedAt: { $lt: date } },
       {
@@ -97,21 +99,27 @@ router.get("/scout-reports", authMiddleware, async (req, res) => {
       ]) {
         const n = Number(req.query[key]);
         if (!Number.isSafeInteger(n) || n < 1 || n > max)
-          throw Error("목표 좌표가 올바르지 않습니다.");
+          throw require('../utils/apiErrors').apiError(400, 'INVALID_REQUEST', "목표 좌표가 올바르지 않습니다.");
         filter[`destination.${key}`] = n;
       }
     }
+    // Targeted observations remain available as scouting knowledge after history deletion.
+    if (!fields.some(k => req.query[k] !== undefined)) filter.ownerDeleted = { $ne: true };
+    const pagination = require('../utils/reportHistory').pagination(req.query, 20);
     const limit = page(req.query, filter);
+    const total = pagination.numbered ? await Report.countDocuments(filter) : null;
     const rows = await Report.find(filter)
       .sort({ observedAt: -1, _id: -1 })
+      .skip(pagination.offset)
       .limit(limit + 1)
       .lean();
     res.json({
       reports: rows.slice(0, limit).map(publicReport),
+      pagination: pagination.numbered ? require('../utils/reportHistory').metadata(pagination, total) : undefined,
       nextCursor: rows.length > limit ? cursorOf(rows[limit - 1]) : null,
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    throw error;
   }
 });
 router.get("/scout-reports/:id", authMiddleware, async (req, res) => {
@@ -119,10 +127,18 @@ router.get("/scout-reports/:id", authMiddleware, async (req, res) => {
     return res.status(404).json({ error: "보고서를 찾을 수 없습니다." });
   const r = await Report.findOne({
     _id: req.params.id,
+    ownerDeleted: { $ne: true },
     ownerUserId: req.user._id,
   }).lean();
   if (!r) return res.status(404).json({ error: "보고서를 찾을 수 없습니다." });
   res.json({ report: publicReport(r) });
+});
+router.patch("/scout-reports/:id/read", authMiddleware, async (req, res) => {
+  const report = await Report.findOneAndUpdate({
+    _id: req.params.id, ownerUserId: req.user._id, ownerDeleted: { $ne: true },
+  }, { $set: { ownerRead: true } }, { returnDocument: 'after' }).select('_id');
+  if (!report) throw require('../utils/apiErrors').apiError(404, 'NOT_FOUND', '정찰 기록을 찾을 수 없습니다.');
+  res.json({ read: true });
 });
 router.get("/scout-alerts", authMiddleware, async (req, res) => {
   try {
@@ -146,7 +162,15 @@ router.get("/scout-alerts", authMiddleware, async (req, res) => {
       nextCursor: rows.length > limit ? cursorOf(rows[limit - 1]) : null,
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    throw error;
   }
 });
+router.delete('/scout-reports', authMiddleware, async (req, res) => {
+  const ids = require('../utils/reportHistory').deleteIds(req.body);
+  const filter = { _id: { $in: ids }, ownerUserId: req.user._id };
+  if (await Report.countDocuments(filter) !== ids.length) return res.status(404).json({ error: '정찰 기록을 찾을 수 없습니다.' });
+  await Report.updateMany(filter, { $set: { ownerDeleted: true } });
+  res.json({ deletedCount: ids.length });
+});
+router.use(errorHandler);
 module.exports = router;

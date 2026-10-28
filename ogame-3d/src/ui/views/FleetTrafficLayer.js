@@ -8,12 +8,13 @@ function node(name, attrs = {}) {
  return el;
 }
 export class FleetTrafficLayer {
- constructor(chart, { onSelect, onMore, onMissions, controlsRoot } = {}) {
-  this.chart = chart; this.onSelect = onSelect; this.onMore = onMore; this.onMissions = onMissions;
+ constructor(chart, { onSelect, onMore, onMissions, controlsRoot, overlayOnly = false } = {}) {
+  this.overlayOnly = overlayOnly; this.chart = chart; this.onSelect = onSelect; this.onMore = onMore; this.onMissions = onMissions;
   this.prefix = `traffic-${++instance}`; this.routes = []; this.filter = 'all'; this.selected = null; this.clockOffset = 0;
   this.root = document.createElement('section'); this.root.className = 'fleet-traffic';
   (controlsRoot || chart.container).appendChild(this.root);
   this.root.innerHTML = `<header><strong>함대 이동 <span data-traffic-count>0</span></strong><label>표시 <select data-traffic-filter aria-label="함대 이동 필터"><option value="all">전체</option><option value="self">내 함대</option><option value="others">다른 사용자</option><option value="incoming">내 행성으로 오는 이동</option></select></label></header><p class="traffic-status" role="status">이동 정보를 불러오는 중…</p><div class="traffic-owners" aria-label="함대 소유자 범례"></div><details class="traffic-list"><summary>항로 목록</summary><div data-traffic-routes></div></details><article class="traffic-detail" hidden></article>`;
+  if (overlayOnly) this.root.style.display = 'none';
   this.statusEl = this.root.querySelector('.traffic-status');
   this.root.addEventListener('change', ev => { if (ev.target.matches('[data-traffic-filter]')) { this.filter = ev.target.value;
     if(this.selected && !this.visibleRoutes().some(r=>r.id===this.selected)){this.selected=null;this.root.querySelector('.traffic-detail').hidden=true;this.onSelect?.(null);}
@@ -99,7 +100,7 @@ export class FleetTrafficLayer {
   this.selected=id;this.render();const r=this.routes.find(r=>r.id===id);if(!r)return;
   const detail=this.root.querySelector('.traffic-detail');detail.hidden=false;
   detail.innerHTML=`<h4>${e(r.username)} · ${r.status==='returning'?'귀환':'이동'}</h4><p>${e(endpointLabel(r.from))} → ${e(endpointLabel(r.to))}</p><p>${r.count}개 이동 · 도착까지 <b data-traffic-eta="${e(r.endsAt)}"></b></p><div data-traffic-individual><p>개별 이동을 불러오는 중…</p></div>${r.isSelf?'<button type="button" class="cmd-btn" data-traffic-missions>내 임무 상세 보기</button>':''}`;
-  this.tick();this.onSelect?.(r);detail.scrollIntoView({block:'nearest',behavior:'auto'});
+  this.tick();this.onSelect?.(r);if(this.overlayOnly)return;detail.scrollIntoView({block:'nearest',behavior:'auto'});
  }
  showMovements(rows, nextCursor, error='') {
   const host=this.root.querySelector('[data-traffic-individual]');if(!host)return;

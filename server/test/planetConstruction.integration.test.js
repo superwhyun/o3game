@@ -19,7 +19,7 @@ test('real MongoDB area, construction, demolition, traits and terraforming lifec
   try {
     await mongoose.connect(repl.getUri('planet_area_test'));
     process.env.JWT_SECRET = randomBytes(32).toString('hex');
-    await Config.create({resourceSettings:{defaultStorage:{metal:1e12,crystal:1e12,deuterium:1e12}}});
+    await Config.create({areaSettings:{bonusUsableFields:0},resourceSettings:{defaultStorage:{metal:1e12,crystal:1e12,deuterium:1e12}}});
     await entities.initialize();
     await Promise.all([User.init(),Queue.init()]);
     const express = require('express'); const app=express(); app.use(express.json());
@@ -80,21 +80,21 @@ test('real MongoDB area, construction, demolition, traits and terraforming lifec
       const demolishRobot=await request(other,'/demolish',{buildingId:'robotFactory'});assert.equal(demolishRobot.status,200);
       assert.equal((await request(other,'/build',{buildingId:'shipyard'})).body.code,'REQUIREMENTS_NOT_MET');
       const research=await request(other,'/research',{researchId:'terraforming'});assert.equal(research.status,200);
-      assert.equal((await request(other,'/demolish',{buildingId:'researchLab'})).body.code,'BUILDING_BUSY');
+      assert.equal((await request(other,'/demolish',{buildingId:'researchLab'})).body.code,'LAB_BUSY');
       const cfg=await Config.findOne();cfg.resourceSettings.defaultStorage.metal=10000;await cfg.save();
       const storageUser=await fixture([{buildings:{metalStorage:2},resources:{metal:21000,crystal:10000,deuterium:10000}}]);
       const storage=await request(storageUser,'/demolish',{buildingId:'metalStorage'});assert.equal(storage.status,200);
       const after=await complete(storageUser,storage.body.queueItem.id);assert.ok(after.snapshot.planets[0].resources.metal<=after.snapshot.planets[0].storage.metal);
       cfg.resourceSettings.defaultStorage.metal=1e12;await cfg.save();
     });
-    await t.test('global terraforming increases each planet percentage but not absolute size and preserves local research',async()=>{
+    await t.test('global terraforming increases each planet percentage but not absolute size and preserves user research',async()=>{
       const user=await fixture([{buildings:{researchLab:10},research:{energyTechnology:12,astrophysics:4}},{diameter:25600,research:{energyTechnology:3}}]);
       const before=await settleUserState(user._id);
       const q=await request(user,'/research',{researchId:'terraforming',planetId:'0'});assert.equal(q.status,200);assert.equal(q.body.snapshot.research.terraforming,0);
       const after=await complete(user,q.body.queueItem.id);
       for(let i=0;i<2;i++){assert.equal(after.snapshot.planets[i].area.usablePercent,42);assert.equal(after.snapshot.planets[i].area.total,before.snapshot.planets[i].area.total);}
       assert.ok(after.snapshot.planets[1].area.usable-before.snapshot.planets[1].area.usable>after.snapshot.planets[0].area.usable-before.snapshot.planets[0].area.usable);
-      const selected=await request(user,'/planet',{planetId:'1'});assert.equal(selected.body.snapshot.research.energyTechnology,3);assert.equal(selected.body.snapshot.research.terraforming,1);
+      const selected=await request(user,'/planet',{planetId:'1'});assert.equal(selected.body.snapshot.research.energyTechnology,12);assert.equal(selected.body.snapshot.research.terraforming,1);
       await User.updateOne({_id:user._id},{$set:{terraformingLevel:30}});
       assert.equal((await request(user,'/research',{researchId:'terraforming',planetId:'0'})).body.code,'TERRAFORMING_MAX_LEVEL');
     });

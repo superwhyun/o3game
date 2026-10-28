@@ -7,6 +7,9 @@ const { calculateBuildingCost, calculateResearchCost, calculateShipCost } = requ
 const { applyOfflineProduction } = require('../utils/planetEconomy');
 const { settleUserState, settleUsersWithDueQueues } = require('../services/GameStateService');
 const entityConfigService = require('../services/EntityConfigService');
+const { normalizeError, apiError } = require('../utils/apiErrors');
+const { authenticateUser } = require('../middleware/admin');
+const { randomUUID } = require('node:crypto');
 const { verifyUserToken } = require('../utils/authToken');
 const { calculateRaidLoot, calculateSurvivors, mergeCargo } = require('../utils/attackRules');
 
@@ -14,22 +17,91 @@ class SocketHandlers {
   constructor(io) {
     this.io = io;
     this.connectedUsers = new Map();
+    this.presenceUpdates = new Map();
     this.setupGlobalTicks();
   }
   
   handleConnection(socket) {
     console.log(`Client connected: ${socket.id}`);
     
-    socket.on('authenticate', (token) => this.authenticate(socket, token));
-    socket.on('getPlanetData', () => this.getPlanetData(socket));
-    socket.on('getGalaxy', (data) => this.getGalaxy(socket, data));
-    socket.on('getBattleReports', () => this.getBattleReports(socket));
+    const run = (event, handler) => socket.on(event, async (data, ack) => {
+      if (typeof data === 'function') { ack=data; data=undefined; }
+      const requestId=randomUUID();
+      try {
+        const now=Date.now();
+        this.eventLimits ||= new Map();
+        for (const [key, bucket] of this.eventLimits) if(bucket.until<=now)this.eventLimits.delete(key);
+        const key=event==='authenticate' ? `auth:${socket.handshake?.address || socket.id}` : `user:${socket.userId || socket.id}`;
+        const bucket=this.eventLimits.get(key)||{count:0,until:now+60000};
+        this.eventLimits.set(key,bucket);
+        if(++bucket.count>120)throw apiError(429,'RATE_LIMITED','요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
+        if(event==='authenticate') {
+          if(typeof data!=='string'||data.length>4096)throw apiError(401,'AUTH_INVALID_TOKEN','유효하지 않은 로그인 토큰입니다.');
+          await this.authenticate(socket,data);
+        } else {
+          if(!socket.authToken)throw apiError(401,'AUTH_REQUIRED','로그인이 필요합니다.');
+          const user=await authenticateUser({headers:{authorization:`Bearer ${socket.authToken}`}});
+          if(String(user._id)!==String(socket.userId))throw apiError(401,'AUTH_INVALID_TOKEN','유효하지 않은 로그인 토큰입니다.');
+          if(event==='getGalaxy') {
+            if(!data||typeof data!=='object'||!Number.isSafeInteger(data.galaxy)||data.galaxy<1||data.galaxy>9||!Number.isSafeInteger(data.system)||data.system<1||data.system>499)throw apiError(400,'INVALID_REQUEST','성계 좌표가 올바르지 않습니다.');
+          }
+          await handler(data);
+        }
+        if(typeof ack==='function')ack({ok:true,requestId});
+      } catch(error) {
+        const e=normalizeError(error), packet={error:e.message,message:e.message,code:e.code,status:e.status,requestId};
+        socket.emit('apiError',packet);
+        if(event==='authenticate'){await this.clearSession(socket).catch(()=>{});socket.emit('auth_error',e.message);}
+        else {socket.emit('error',packet);if(e.status===401||e.code==='ACCOUNT_BANNED')await this.clearSession(socket).catch(()=>{});}
+        if(typeof ack==='function')ack({ok:false,error:packet});
+      }
+    });
+    run('authenticate', data=>this.authenticate(socket,data));
+    run('getPlanetData', ()=>this.getPlanetData(socket));
+    run('getGalaxy', data=>this.getGalaxy(socket,data));
+    run('getBattleReports', ()=>this.getBattleReports(socket));
     socket.on('disconnect', () => this.handleDisconnect(socket));
   }
   
   async authenticate(socket, token) {
+    const previous = socket.authentication || Promise.resolve();
+    socket.authentication = previous.catch(() => {}).then(() => this.authenticateSession(socket, token));
+    return socket.authentication;
+  }
+
+  async updatePresence(userId) {
+    const previous = this.presenceUpdates.get(userId) || Promise.resolve();
+    const update = previous.catch(() => {}).then(async () => {
+      const sockets = [...this.connectedUsers].filter(([, id]) => id === userId);
+      await User.updateOne({ _id: userId }, { $set: {
+        isOnline: sockets.length > 0,
+        socketId: sockets.at(-1)?.[0] || null
+      } });
+    });
+    this.presenceUpdates.set(userId, update);
+    try { await update; }
+    finally { if (this.presenceUpdates.get(userId) === update) this.presenceUpdates.delete(userId); }
+  }
+
+  async clearSession(socket) {
+    const userId = this.connectedUsers.get(socket.id);
+    this.connectedUsers.delete(socket.id);
+    socket.userId = null;
+    socket.authToken = null;
+    if (userId) {
+      await socket.leave(`user:${userId}`);
+      await this.updatePresence(userId);
+    }
+  }
+
+  async authenticateSession(socket, token) {
     try {
-      const { userId } = verifyUserToken(token);
+      await this.clearSession(socket);
+      if (socket.connected === false) return;
+      const authRequest = {headers:{authorization:`Bearer ${token}`}};
+      const verified = await authenticateUser(authRequest);
+      if (authRequest.aiScoped) throw apiError(403, 'FORBIDDEN', 'AI 대리는 HTTP 게임 API만 사용할 수 있습니다.');
+      const userId = String(verified._id);
       if (!userId) {
         throw new Error('Token does not include a user id');
       }
@@ -39,33 +111,35 @@ class SocketHandlers {
         return;
       }
       
-      user.isOnline = true;
-      user.socketId = socket.id;
-      user.lastLogin = new Date();
-      await user.save();
-      
-      socket.join(`user:${userId}`);
+      if (socket.connected === false) return;
+      await socket.join(`user:${userId}`);
+      if (socket.connected === false) return;
       this.connectedUsers.set(socket.id, userId);
       socket.userId = userId;
+      socket.authToken = token;
+      await this.updatePresence(userId);
+      if (socket.connected === false) return;
       
       socket.emit('authenticated', { username: user.username });
-      this.getPlanetData(socket);
+      await this.getPlanetData(socket);
       
     } catch (error) {
-      socket.emit('auth_error', error.message);
+      await this.clearSession(socket).catch(err => console.error('Session cleanup failed:', err.message));
+      throw error;
     }
   }
   
   async getPlanetData(socket) {
     if (!socket.userId) return;
+    const userId = socket.userId;
     
     try {
-      const settled = await settleUserState(socket.userId, new Date());
-      if (!settled?.user) return;
+      const settled = await settleUserState(userId, new Date());
+      if (!settled?.user || socket.userId !== userId || socket.connected === false) return;
 
       socket.emit('planetData', settled.snapshot);
     } catch (error) {
-      socket.emit('error', { message: error.message });
+      throw error;
     }
   }
   
@@ -187,67 +261,49 @@ class SocketHandlers {
     if (!socket.userId) return;
     
     try {
-      const planets = await User.find({
-        'planets.galaxy': galaxy,
-        'planets.system': system
-      }, 'username planets.$ isOnline socketId');
-      
-      const systemData = [];
-      for (let i = 1; i <= 15; i++) {
-        const user = planets.find(p => p.planets.some(planet => planet.planet === i));
-        
-        if (user) {
-          systemData.push({
-            position: i,
-            username: user.username,
-            hasPlanet: true,
-            isOnline: user.isOnline
-          });
-        } else {
-          systemData.push({ position: i, hasPlanet: false });
-        }
-      }
-      
-      socket.emit('galaxyData', { galaxy, system, planets: systemData });
-      
+      const users=await User.find({'planets.galaxy':galaxy,'planets.system':system}).select('_id username isOnline planets').lean();
+      const scoutReports=await require('../models/ScoutReport').find({ownerUserId:socket.userId,'destination.galaxy':galaxy,'destination.system':system,outcome:{$in:['empty','occupied','friendly']}}).sort({observedAt:-1}).lean();
+      const {conflicts,...view}=require('../utils/galaxySystem').buildGalaxySystem({galaxy,system,requestingUserId:socket.userId,users,scoutReports});
+      socket.emit('galaxyData',view);
     } catch (error) {
-      socket.emit('error', { message: error.message });
+      throw error;
     }
   }
   
   async getBattleReports(socket) {
     if (!socket.userId) return;
+    const userId = socket.userId;
     
     try {
       const reports = await BattleReport.find({
         $or: [
-          { 'attacker.userId': socket.userId },
-          { 'defender.userId': socket.userId }
+          { 'attacker.userId': userId },
+          { 'defender.userId': userId }
         ]
       }).sort({ battleTime: -1 }).limit(20);
       
-      socket.emit('battleReports', reports);
+      if (socket.userId === userId && socket.connected !== false) socket.emit('battleReports', reports);
     } catch (error) {
-      socket.emit('error', { message: error.message });
+      throw error;
     }
   }
   
-  handleDisconnect(socket) {
+  async handleDisconnect(socket) {
     console.log(`Client disconnected: ${socket.id}`);
     
-    if (socket.userId) {
-      this.connectedUsers.delete(socket.id);
-      User.findByIdAndUpdate(socket.userId, {
-        isOnline: false,
-        socketId: null
-      }).exec();
-    }
+    try { await this.clearSession(socket); }
+    catch (error) { console.error('Presence update failed:', error.message); }
   }
   
   setupGlobalTicks() {
-    setInterval(async () => {
-      await this.processFleetArrivals();
-      await settleUsersWithDueQueues(new Date());
+    this.tickTimer = setInterval(async () => {
+      if (this.processingTick) return;
+      this.processingTick = true;
+      try {
+        await this.processFleetArrivals();
+        await settleUsersWithDueQueues(new Date());
+      } catch (error) { console.error('Game tick failed:', error.message); }
+      finally { this.processingTick = false; }
     }, 5000);
   }
   

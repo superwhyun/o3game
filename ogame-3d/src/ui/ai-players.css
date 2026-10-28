@@ -1,0 +1,149 @@
+#tab-ai {
+  color: var(--text-primary, #d4d9e2);
+  min-width: 0;
+}
+#tab-ai section {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid #27313e;
+  border-radius: 8px;
+  min-width: 0;
+}
+#tab-ai h3,
+#tab-ai h4 {
+  color: #d1b574;
+  margin: 0 0 12px;
+}
+#tab-ai .ai-heading,
+#tab-ai .ai-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#tab-ai .ai-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  min-width: 0;
+}
+#tab-ai .ai-form h4 {
+  grid-column: 1/-1;
+}
+#tab-ai label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  min-width: 0;
+}
+#tab-ai input:not([type="checkbox"]),
+#tab-ai select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background: #080f18;
+  color: #d4d9e2;
+  border: 1px solid #344150;
+  padding: 9px;
+  border-radius: 4px;
+}
+#tab-ai button {
+  padding: 8px 12px;
+  border: 1px solid #6c5d39;
+  background: #191c20;
+  color: #d1b574;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+#tab-ai button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+#tab-ai .ai-check {
+  flex-direction: row;
+  align-items: center;
+}
+#tab-ai .ai-model-list,
+#tab-ai .ai-player-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr));
+}
+#tab-ai .ai-card {
+  padding: 14px;
+  border: 1px solid #293545;
+  background: #0c1520;
+  border-radius: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#tab-ai .ai-card > span,
+#tab-ai .ai-card > small {
+  display: block;
+  margin: 8px 0;
+}
+#tab-ai small,
+#tab-ai .ai-help,
+#tab-ai .ai-worker-status {
+  color: #8f9cab;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+#tab-ai .ai-error {
+  color: #ef8a78;
+}
+#tab-ai [hidden] {
+  display: none !important;
+}
+@media (max-width: 600px) {
+  #tab-ai section {
+    padding: 10px;
+  }
+  #tab-ai .ai-form,
+  #tab-ai .ai-player-list,
+  #tab-ai .ai-model-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.users-kind-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.users-kind-tabs button {
+  min-height: 40px;
+  padding: 8px 16px;
+  background: var(--ink-0);
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.users-kind-tabs button[aria-pressed="true"] {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+}
+#users-human-section[hidden],
+#tab-ai[hidden] {
+  display: none;
+}
+.ai-behavior-scores {
+  grid-column: 1/-1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+.ai-behavior-scores legend,
+.ai-model-settings summary {
+  color: var(--gold-bright);
+}
+.ai-model-settings summary {
+  cursor: pointer;
+  padding: 10px;
+}

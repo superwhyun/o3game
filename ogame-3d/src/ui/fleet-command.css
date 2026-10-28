@@ -168,3 +168,5 @@
   .mission-card-top>b { font-size:14px; }
 }
 @media(prefers-reduced-motion:reduce) { .mission-card { animation:none; } .formation-card,.combat-fleet-card { transition:none; } .course-line { animation:none; } }
+
+.formation-upkeep { line-height: 1.6; }

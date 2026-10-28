@@ -46,7 +46,7 @@ async function login(page) {
   }, fixture);
   await page.goto("/");
   await page.locator('.holo-btn[data-view="galaxy"]').click();
-  await page.locator('.slot-row[data-slot="8"]').click();
+  await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="8"]').press('Enter');
 }
 async function settle() {
   const Movement = require("../../server/models/FleetMovement");
@@ -96,7 +96,7 @@ test("three clicks, information report, return, empty orbit and reload", async (
     );
   await page.reload();
   await page.locator('.holo-btn[data-view="galaxy"]').click();
-  await page.locator('.slot-row[data-slot="8"]').click();
+  await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="8"]').press('Enter');
   await expect(page.locator("[data-scout-available]")).toHaveText("6");
   const origin = await mongoose.connection.db
     .collection("users")
@@ -126,14 +126,14 @@ test("three clicks, information report, return, empty orbit and reload", async (
   await settle();
   await page.reload();
   await page.locator('.holo-btn[data-view="galaxy"]').click();
-  await page.locator('.slot-row[data-slot="8"]').click();
+  await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="8"]').press('Enter');
   await expect(page.locator(".scout-panel .scout-report")).toBeVisible();
   await expect(page.locator(".scout-panel")).toContainText("정보 4단계");
   await expect(page.locator("[data-scout-available]")).toHaveText("6");
   await page.locator(".scout-panel summary").click();
   await expect(page.locator(".scout-panel")).toContainText("주둔 함선");
   await page.screenshot({ path: imageDir + "scout-desktop.png" });
-  await page.locator('.slot-row[data-slot="9"]').click();
+  await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="9"]').press('Enter');
   await expect(page.locator(".scout-panel")).toContainText(
     "아직 관측한 정보가 없습니다.",
   );
@@ -148,7 +148,7 @@ test("three clicks, information report, return, empty orbit and reload", async (
   await settle();
   await page.reload();
   await page.locator('.holo-btn[data-view="galaxy"]').click();
-  await page.locator('.slot-row[data-slot="9"]').click();
+  await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="9"]').press('Enter');
   await expect(page.locator(".scout-panel")).toContainText("미점령 행성 · 개척 조사");
   await page.locator('.scout-panel details summary').first().click();
   await expect(page.locator('.scout-panel .scout-terrain')).toContainText('자연 상태 사용 불가');
@@ -188,11 +188,11 @@ test("mobile zero probes and committed lost response recover exactly once", asyn
   await page.unroute("**/api/game/scouts");
   await page.reload();
   await page.locator('.holo-btn[data-view="galaxy"]').click();
-  await page.locator('.slot-row[data-slot="8"]').click();
+  await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="8"]').press('Enter');
   await settle();
   await page.reload();
   await page.locator('.holo-btn[data-view="galaxy"]').click();
-  await page.locator('.slot-row[data-slot="8"]').click();
+  await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="8"]').press('Enter');
   await expect(page.locator(".scout-panel .scout-report")).toBeVisible();
   await page.screenshot({ path: imageDir + "scout-mobile.png" });
   expect(
@@ -213,11 +213,11 @@ test("mobile zero probes and committed lost response recover exactly once", asyn
     );
   await page.reload();
   await page.locator('.holo-btn[data-view="galaxy"]').click();
-  await page.locator('.slot-row[data-slot="8"]').click();
+  await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="8"]').press('Enter');
   await expect(page.locator('[data-scout-action="launch"]')).toBeDisabled();
   await expect(page.locator(".scout-panel")).toContainText(
     "정찰선을 먼저 건조",
   );
-  await page.locator('.slot-row[data-slot="4"]').click();
+  await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="4"]').press('Enter');
   await expect(page.locator(".scout-panel")).toContainText("아군 행성");
 });

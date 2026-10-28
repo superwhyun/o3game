@@ -34,7 +34,7 @@ test('map draws colored internal, external and return arrows without blocking pl
  const data = await response.json();
  expect(data.routes.some(r=>r.count===2)).toBeTruthy();
  expect(data.routes.filter(r=>!r.isSelf).every(r=>!('fleet' in r)&&!('mission' in r))).toBeTruthy();
- await page.locator('.slot-row[data-slot="8"]').click();
+ await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="8"]').press('Enter');
  await expect(page.locator('.slot-detail')).toContainText('하이네센');
  await expect(page.locator('.traffic-course')).toHaveCount(4);
  await page.locator('[data-traffic-filter]').selectOption('self');
@@ -136,7 +136,7 @@ test('late system responses, offline recovery, reduced motion and logout preserv
  await expect(page.locator('.traffic-status')).toContainText('연결 지연');
  await page.unroute('**/api/game/galaxy/traffic?*');await page.evaluate(()=>window.uiManager.galaxyView.refreshTraffic());
  await expect(page.locator('.traffic-status')).not.toContainText('연결 지연');
- await page.locator('.slot-row[data-slot="8"]').click();
+ await page.locator('#galaxy-holo .orbit-svg .slot[data-slot="8"]').press('Enter');
  await page.evaluate(()=>window.uiManager.galaxyView.refreshTraffic());
  await expect(page.locator('.slot-detail')).toContainText('하이네센');
  await page.locator('.holo-btn[data-view="dashboard"]').click();

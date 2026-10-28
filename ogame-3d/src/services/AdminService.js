@@ -1,7 +1,6 @@
 import { apiService } from './ApiService.js';
 import { socketService } from './SocketService.js';
 
-const API_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
 
 class AdminService {
   // Read the token per request: it changes on login/logout without a reload.
@@ -16,26 +15,10 @@ class AdminService {
     };
   }
   
-  async request(endpoint, options = {}) {
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers: this.getHeaders()
-    });
-    
-    const data = await response.json();
-    if (!response.ok) {
-      console.error('[AdminService] Request failed:', {
-        status: response.status,
-        statusText: response.statusText,
-        endpoint,
-        error: data.error,
-        fullResponse: data
-      });
-      throw new Error(data.error || 'Request failed');
-    }
-    return data;
+  request(endpoint, options = {}) {
+    return apiService.request(endpoint, options);
   }
-  
+
   // Check if current user is admin
   isAdmin() {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -69,8 +52,8 @@ class AdminService {
   }
   
   // Get users list
-  async getUsers(page = 1, limit = 50, search = '') {
-    return this.request(`/api/admin/users?page=${page}&limit=${limit}&search=${search}`);
+  async getUsers(page = 1, limit = 50, search = '', kind = 'all') {
+    return this.request(`/api/admin/users?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&kind=${encodeURIComponent(kind)}`);
   }
   
   // Get single user

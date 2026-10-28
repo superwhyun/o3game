@@ -1,0 +1,20 @@
+.colony-status { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.colony-status .holo-resources { flex: 1; order: 0; flex-basis: auto; }
+.population-details { padding: 16px 20px; font-size: 13px; line-height: 1.7; }
+.population-details h3 { color: var(--gold); font-size: 14px; margin: 16px 0 8px; }
+.population-details .spec-list { margin: 0; }
+.population-details progress { width: 100%; accent-color: var(--gold); }
+.population-details table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.population-details th, .population-details td { text-align: right; border-bottom: 1px solid var(--line); padding: 6px 4px; }
+.population-details th:first-child, .population-details td:first-child { text-align: left; }
+.population-details .population-warning { color: var(--alert, #f8ad88); }
+.population-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-block: 12px; }
+@media (max-width: 1200px) { .colony-status { order: 3; flex-basis: 100%; } }
+@media (max-width: 700px) {
+  .population-details { padding: 12px; }
+}
+
+.population-card { grid-column: 1 / -1; }
+.population-card .population-details { padding-top: 0; }
+.population-card .spec-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+@media (max-width: 700px) { .population-card .spec-list { grid-template-columns: 1fr; } }

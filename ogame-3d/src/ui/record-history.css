@@ -1,0 +1,186 @@
+.record-toolbar,
+.record-pagination,
+.record-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.record-toolbar {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.record-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.record-toolbar > span {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-right: auto;
+}
+.record-toolbar > button:last-child {
+  margin-left: auto;
+}
+.record-status {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin: 8px 0;
+}
+.record-status:empty {
+  display: none;
+}
+.record-delete-confirm {
+  padding: 12px;
+  margin: 12px 0;
+  border: 1px solid var(--warn);
+  color: var(--gold-bright);
+}
+.record-delete-confirm > span {
+  margin-right: auto;
+}
+.record-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 8px;
+}
+.record-row:hover {
+  background: rgba(198, 167, 102, 0.05);
+}
+.record-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 18px;
+}
+.record-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.record-heading strong,
+.record-coordinate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.record-result {
+  color: var(--gold);
+  font-size: 12px;
+}
+.record-coordinate,
+.record-open time {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.record-unread {
+  color: var(--ok);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.record-date-short {
+  display: none;
+}
+.record-pagination {
+  justify-content: center;
+  padding: 20px 0;
+}
+.record-pagination [aria-current] {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  opacity: 1;
+}
+.record-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-dim);
+}
+#scout-records-content {
+  display: block;
+}
+.record-detail {
+  padding-top: 12px;
+}
+@media (max-width: 768px) {
+  .record-toolbar {
+    font-size: 12px;
+    gap: 8px;
+  }
+  .record-row {
+    gap: 8px;
+    padding: 0 2px;
+  }
+  .record-open {
+    gap: 6px;
+    font-size: 11px;
+  }
+  .record-heading {
+    gap: 4px;
+  }
+  .record-coordinate,
+  .record-result,
+  .record-open time {
+    font-size: 10px;
+  }
+  .record-date-full {
+    display: none;
+  }
+  .record-date-short {
+    display: inline;
+  }
+  .record-unread {
+    font-size: 0;
+  }
+  .record-unread::before {
+    content: "";
+    display: block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--ok);
+  }
+  .record-row > input {
+    flex-shrink: 0;
+    margin: 0;
+  }
+  .record-pagination {
+    gap: 6px;
+  }
+  .record-pagination button {
+    padding: 5px 8px;
+  }
+}
+
+.record-read-status {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.record-read-status.is-unread {
+  color: var(--ok);
+  font-weight: 700;
+}
+.record-row.is-unread .record-heading strong {
+  color: var(--gold-bright);
+}
+.record-detail-navigation {
+  display: flex;
+  gap: 6px;
+}

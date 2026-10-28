@@ -7,6 +7,8 @@ const schema = new mongoose.Schema({
     unique: true,
   },
   ownerUserId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  ownerDeleted: { type: Boolean, default: false },
+  ownerRead: { type: Boolean, default: false },
   attackerName: String,
   originPlanetId: mongoose.Schema.Types.ObjectId,
   origin: coordinates,
@@ -16,6 +18,7 @@ const schema = new mongoose.Schema({
   targetUserId: mongoose.Schema.Types.ObjectId,
   targetName: String,
   targetCommander: String,
+  pirateLevel: Number,
   outcome: {
     type: String,
     enum: ["empty", "occupied", "friendly", "unavailable"],

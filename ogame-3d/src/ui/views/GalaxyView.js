@@ -1,10 +1,10 @@
 /**
- * Star-system view: orbital chart plus a slot list and a detail card.
+ * Star-system view: orbital chart with a selected-planet detail card.
  */
 import { escapeHtml } from '../dom.js';
 import { FleetTrafficController } from './FleetTrafficController.js';
 import { FleetTrafficLayer } from './FleetTrafficLayer.js';
-import { OrbitChart, relationOf } from './OrbitChart.js';
+import { OrbitChart, relationOf, planetNameOf } from './OrbitChart.js';
 import { bindSystemNav, clampCoords } from './systemNav.js';
 
 const RELATION_LABEL = { own: '아군', other: '타 제국', empty: '미점령 행성' };
@@ -18,11 +18,13 @@ export class GalaxyView {
    * @param {() => { galaxy: number, system: number }} options.getHome
    * @param {(target: { galaxy: number, system: number, planet: number }) => void} options.onTarget
    */
-  constructor({ root, controls, fetchSystem, getHome, onTarget, onSelect, fetchTraffic, getAccount = () => null, onMissions }) {
+  constructor({ root, controls, fetchSystem, getHome, getPlanets = () => [], onTarget, onColonize, onSelect, fetchTraffic, getAccount = () => null, onMissions }) {
     this.root = root;
     this.fetchSystem = fetchSystem;
     this.getHome = getHome;
+    this.getAccount = getAccount;
     this.onTarget = onTarget;
+    this.onColonize = onColonize;
     this.onSelect = onSelect;
     this.fetchTraffic = fetchTraffic;
     this.coords = null;
@@ -35,7 +37,6 @@ export class GalaxyView {
       <aside class="orbit-side">
         <article class="slot-detail" aria-live="polite"></article>
         <section class="scout-panel" aria-label="정찰 정보"></section>
-        <ol class="slot-list" aria-label="궤도 목록"></ol>
       </aside>`;
     this.chart = new OrbitChart(this.root.querySelector('.orbit-host'), { onSelect: (slot) => this.select(slot) });
     this.traffic = new FleetTrafficLayer(this.chart, {
@@ -50,28 +51,34 @@ export class GalaxyView {
       onDetails: (rows, cursor, error) => this.traffic.showMovements(rows, cursor, error),
       onReset: () => this.traffic.reset(),
     });
-    this.listEl = this.root.querySelector('.slot-list');
     this.detailEl = this.root.querySelector('.slot-detail');
+    this.statusEl = document.createElement('p');
+    this.statusEl.className = 'galaxy-error';
+    this.statusEl.setAttribute('role', 'status');
+    this.statusEl.hidden = true;
+    this.detailEl.before(this.statusEl);
     this.scoutEl = this.root.querySelector('.scout-panel');
     this.nav = bindSystemNav(controls, {
       current: () => this.coords,
       home: () => this.getHome(),
+      getPlanets,
       go: (coords) => this.show(coords)
     });
 
-    this.listEl.addEventListener('click', (event) => {
-      const row = event.target.closest('[data-slot]');
-      if (row) this.select(Number(row.dataset.slot));
-    });
     this.detailEl.addEventListener('click', (event) => {
-      if (!event.target.closest('[data-action="target"]') || !this.coords || !this.selected) return;
-      this.onTarget({ ...this.coords, planet: this.selected });
+      const action = event.target.closest('[data-action]')?.dataset.action;
+      if (!this.coords || !this.selected) return;
+      const target = { ...this.coords, planet: this.selected };
+      if (action === 'target') this.onTarget(target);
+      if (action === 'colonize') this.onColonize?.(target);
     });
   }
 
   /** @param {{ galaxy: number, system: number }} [coords] defaults to the last viewed or home system */
   async show(coords = this.coords || this.getHome()) {
     const next = clampCoords(coords);
+    const account = this.getAccount();
+    const sameSystem = this.dataAccount === account && this.coords?.galaxy === next.galaxy && this.coords?.system === next.system;
     if (!this.coords || this.coords.galaxy !== next.galaxy || this.coords.system !== next.system) this.selected = null;
     this.coords = next;
     this.setActive(true);
@@ -80,24 +87,32 @@ export class GalaxyView {
 
     const requestId = ++this.requestId;
     this.root.classList.add('is-loading');
+    this.loading = true;
+    this.statusEl.hidden = true;
     try {
       const data = await this.fetchSystem(next.galaxy, next.system);
       if (requestId !== this.requestId) return; // a newer request superseded this one
       this.data = data;
+      this.dataAccount = account;
+      this.lastFetchAt = Date.now();
+      if (Number.isInteger(coords.planet) && coords.planet >= 1 && coords.planet <= 15) this.selected = coords.planet;
       this.selected ??= data.positions.find((p) => p.owner === 'self')?.position
         ?? data.positions.find((p) => p.occupied)?.position
         ?? null;
       this.chart.setSystem(next, data.positions, this.selected);
-      this.renderList();
       this.renderDetail();
       if (this.fetchTraffic) await this.trafficController.refresh();
     } catch (error) {
       if (requestId !== this.requestId) return;
-      this.data = null;
-      this.listEl.innerHTML = '';
-      this.detailEl.innerHTML = `<p class="galaxy-error">성계 정보를 불러오지 못했습니다: ${escapeHtml(error.message)}</p>`;
+      this.statusEl.textContent = `성계 정보를 불러오지 못했습니다: ${error.message}`;
+      this.statusEl.hidden = false;
+      if (!sameSystem || !this.data) {
+        this.data = null;
+        this.chart.setSystem(next, [], null);
+        this.detailEl.innerHTML = '';
+      }
     } finally {
-      if (requestId === this.requestId) this.root.classList.remove('is-loading');
+      if (requestId === this.requestId) { this.loading = false; this.root.classList.remove('is-loading'); }
     }
   }
 
@@ -106,27 +121,32 @@ export class GalaxyView {
     if(active) this.chart.start(); else this.chart.stop();
   }
 
+  async refreshMap({ background = false } = {}) {
+    if (!this.coords || !this.data || this.loading || this.mapRefreshing || (background && Date.now() - (this.lastFetchAt || 0) < 30000)) return;
+    const requestId = this.requestId;
+    const coords = this.coords;
+    this.mapRefreshing = true;
+    try {
+      const data = await this.fetchSystem(coords.galaxy, coords.system);
+      if (requestId !== this.requestId) return;
+      this.lastFetchAt = Date.now();
+      this.statusEl.hidden = true;
+      if (JSON.stringify(data.positions) === JSON.stringify(this.data?.positions)) return;
+      this.data = data;
+      this.chart.setSystem(coords, data.positions, this.selected);
+      this.renderDetail();
+    } catch (error) {
+      if (requestId === this.requestId) { this.statusEl.textContent = `갱신 대기 · ${error.message}`; this.statusEl.hidden = false; }
+      throw error;
+    } finally { this.mapRefreshing = false; }
+  }
+
   refreshTraffic() { return this.trafficController.refresh(); }
 
   select(slot) {
     this.selected = slot;
     this.chart.setSelected(slot);
-    this.renderList();
     this.renderDetail();
-  }
-
-  renderList() {
-    this.listEl.innerHTML = this.data.positions.map((position) => {
-      const relation = relationOf(position);
-      const title = position.planet ? escapeHtml(position.planet.name) : '미점령 행성';
-      const owner = position.planet ? escapeHtml(position.planet.username) : '';
-      return `<li><button type="button" class="slot-row slot-${relation} ${position.position === this.selected ? 'is-selected' : ''}"
-          data-slot="${position.position}" aria-pressed="${position.position === this.selected}">
-          <span class="slot-index">${position.position}</span>
-          <span class="slot-name">${title}</span>
-          <span class="slot-owner">${owner}</span>
-        </button></li>`;
-    }).join('');
   }
 
   renderDetail() {
@@ -139,15 +159,15 @@ export class GalaxyView {
     const { galaxy, system } = this.coords;
     const action = {
       own: '<button type="button" class="cmd-btn" disabled>아군 행성</button>',
-      other: '<button type="button" class="cmd-btn primary" data-action="target">작전 목표 지정</button>',
-      empty: '<button type="button" class="cmd-btn primary" data-action="target">개척 함대 선택</button>'
+      other: '<button type="button" class="cmd-btn primary" data-action="target">공격 · 함대운용</button>',
+      empty: '<button type="button" class="cmd-btn primary" data-action="colonize">식민선 보내기</button><button type="button" class="cmd-btn" data-action="target">개척 함대 선택</button>'
     }[relation];
 
     this.detailEl.innerHTML = `
       <p class="detail-kicker">[${galaxy}:${system}:${position.position}] · 제${position.position}궤도</p>
-      <h3 class="slot-detail-title">${position.planet ? escapeHtml(position.planet.name) : '미점령 행성'}</h3>
+      <h3 class="slot-detail-title">${escapeHtml(planetNameOf(position))}</h3>
       <dl class="spec-list single">
-        <div class="spec-row"><dt>관계</dt><dd class="rel-${relation}">${RELATION_LABEL[relation]}</dd></div>
+        <div class="spec-row"><dt>관계</dt><dd class="rel-${relation}">${position.planet?.isPirate ? `해적 거점 · Lv.${position.planet.pirateLevel}` : RELATION_LABEL[relation]}</dd></div>
         ${position.planet ? `
           <div class="spec-row"><dt>사령관</dt><dd>${escapeHtml(position.planet.username)}</dd></div>
           <div class="spec-row"><dt>통신</dt><dd>${position.planet.isOnline ? '접속 중' : '부재'}</dd></div>` : ''}

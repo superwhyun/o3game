@@ -75,6 +75,9 @@ test(
         originPlanetId: String(a.planets[0]._id),
         destination: { galaxy: 1, system: 1, planet: slot },
       });
+      const unscoutedMap = await req(a, '/api/game/galaxy?galaxy=1&system=1');
+      assert.equal(unscoutedMap.data.positions[7].scouted, false);
+      assert.equal(unscoutedMap.data.positions[7].planet.name, null);
       const scouts = require("../services/ScoutService");
       const fleets = require("../services/FleetService");
       const duplicate = order();
@@ -157,6 +160,12 @@ test(
       await fleets.processMovement(empty._id, new Date(+empty.arrivalTime + 1));
       const emptyReport = await Report.findOne({ movementId: empty._id });
       assert.equal(emptyReport.outcome, "empty");
+      const exploredMap = await req(a, '/api/game/galaxy?galaxy=1&system=1');
+      assert.equal(exploredMap.data.positions[7].scouted, true);
+      assert.equal(exploredMap.data.positions[7].planet.name, report.targetName);
+      assert.equal(exploredMap.data.positions[8].scouted, true);
+      const otherMap = await req(b, '/api/game/galaxy?galaxy=1&system=1');
+      assert.equal(otherMap.data.positions[8].scouted, false);
       assert.deepEqual(Object.keys(emptyReport.sections), ["environment"]);
       const { surveyOf, environmentOf } = require("../utils/colonizationRules");
       assert.deepEqual(emptyReport.sections.environment, surveyOf(environmentOf(order(9).destination), a.terraformingLevel));
@@ -189,7 +198,7 @@ test(
         { _id: b._id },
         {
           $set: {
-            "planets.0.research.espionageTechnology": 50,
+            "research.espionageTechnology": 50,
             "planets.0.fleet.cruiser": 1,
           },
         },
@@ -296,7 +305,7 @@ test(
       });
       await User.updateOne(
         { _id: a._id },
-        { $set: { "planets.0.research.espionageTechnology": 0 } },
+        { $set: { "research.espionageTechnology": 0 } },
       );
       const originalReportSave = Report.prototype.save;
       Report.prototype.save = async function () {

@@ -15,7 +15,7 @@ const CATALOG_FILES = {
     file: 'buildings.js',
     header: `/**
  * 건물 카탈로그 — 새 건물은 이 배열에 항목 하나를 추가하세요.
- * category: 'resources' | 'facilities'
+ * category: 'resources' | 'manufacturing' | 'population'
  * effects: production / energyProduction / energyConsumption / storage / constructionModifiers
  * 필드 설명: ./schema.js
  */`
@@ -24,7 +24,7 @@ const CATALOG_FILES = {
     file: 'research.js',
     header: `/**
  * 연구 카탈로그 — 새 기술은 이 배열에 항목 하나를 추가하세요.
- * category: 'basic' | 'drive' | 'combat'
+ * category: 'population' | 'planet' | 'combat' | 'drive'
  * 필드 설명: ./schema.js
  */`
   },

@@ -4,6 +4,10 @@ const gameConfigSchema = new mongoose.Schema({
   // Server Settings
   serverName: { type: String, default: 'Cosmic Empire' },
   serverSpeed: { type: Number, default: 1 }, // 1 = normal, 2 = 2x, 5 = 5x, etc.
+  areaSettings: {
+    bonusUsableFields: { type: Number, default: 40, required: true, min: 0,
+      validate: { validator: Number.isSafeInteger, message: '추가 가용면적은 0 이상의 정수여야 합니다.' } }
+  },
   
   // Resource Settings
   resourceSettings: {
@@ -22,6 +26,10 @@ const gameConfigSchema = new mongoose.Schema({
     storageMultiplier: { type: Number, default: 1 }
   },
   
+  // Population economy coefficients; defaults are shared with the calculator.
+  populationSettings: Object.fromEntries(Object.entries(require('../utils/populationEconomy').DEFAULTS)
+    .map(([key, value]) => [key, { type: Number, default: value, min: ['growthHours', 'foodConsumptionPerPopulation'].includes(key) ? 0.01 : 0 }])),
+
   // Building Settings
   buildingSettings: {
     buildTimeMultiplier: { type: Number, default: 1 }, // Lower = faster
@@ -37,7 +45,7 @@ const gameConfigSchema = new mongoose.Schema({
   
   // Fleet Settings
   fleetSettings: {
-    flightSpeedMultiplier: { type: Number, default: 1 },
+    flightSpeedMultiplier: { type: Number, default: 1, min: 0.1, max: 100 },
     fuelConsumptionMultiplier: { type: Number, default: 1 },
     cargoCapacityMultiplier: { type: Number, default: 1 }
   },

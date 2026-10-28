@@ -29,6 +29,9 @@ export function formatAmount(value) {
 /** Korean labels for catalog categories; unknown categories fall back to the raw key. */
 export const CATEGORY_LABELS = {
   resources: '자원',
+  manufacturing: '제조',
+  population: '인구',
+  planet: '행성',
   facilities: '시설',
   basic: '기초',
   drive: '추진',
@@ -54,4 +57,4 @@ export const STAT_LABELS = {
   fuel: '연료 소모'
 };
 
-export const RESOURCE_LABELS = { metal: '금속', crystal: '수정', deuterium: '중수소', energy: '에너지' };
+export const RESOURCE_LABELS = { metal: '금속', crystal: '수정', deuterium: '중수소', energy: '에너지', food: '식량' };

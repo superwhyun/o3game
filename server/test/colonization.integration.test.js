@@ -41,6 +41,10 @@ test('colony mission consumes one ship, settles escorts and formation without re
     const colony = owners[0].planets.find(p => p.planet === 3);
     assert.equal(colony.diameter, environmentOf(dest).diameter);
     assert.equal(colony.resources.metal, 50);
+    assert.equal(colony.population.version, 1);
+    assert.equal(colony.population.count, 10);
+    assert.equal(colony.resources.food, 240);
+    assert.equal(colony.population.baseHousing, 15);
     const { surveyOf } = require('../utils/colonizationRules');
     assert.deepEqual(surveyOf(colony, a.terraformingLevel), observation.sections.environment);
     const winner = owners[0]._id.toString();

@@ -6,8 +6,8 @@ function levelOf(user, planet) {
   return Math.max(
     0,
     Math.floor(
-      planet?.research?.espionageTechnology ??
-        user?.research?.espionageTechnology ??
+      user?.research?.espionageTechnology ??
+        planet?.research?.espionageTechnology ??
         0,
     ),
   );

@@ -1,6 +1,6 @@
 /**
  * 건물 카탈로그 — 새 건물은 이 배열에 항목 하나를 추가하세요.
- * category: 'resources' | 'facilities'
+ * category: 'resources' | 'manufacturing' | 'population'
  * effects: production / energyProduction / energyConsumption / storage / constructionModifiers
  * 필드 설명: ./schema.js
  */
@@ -17,6 +17,7 @@ module.exports = [
     costMultiplier: 1.5,
     buildTime: 60,
     effects: {
+      population: { jobsPerLevel: 1 },
       production: { metal: { kind: 'scaled', coefficient: 30, growth: 1.1 } },
       energyConsumption: { amount: { kind: 'scaled', coefficient: 10, growth: 1.1 } }
     }
@@ -33,6 +34,7 @@ module.exports = [
     costMultiplier: 1.6,
     buildTime: 90,
     effects: {
+      population: { jobsPerLevel: 1 },
       production: { crystal: { kind: 'scaled', coefficient: 20, growth: 1.1 } },
       energyConsumption: { amount: { kind: 'scaled', coefficient: 10, growth: 1.1 } }
     }
@@ -49,6 +51,7 @@ module.exports = [
     costMultiplier: 1.5,
     buildTime: 120,
     effects: {
+      population: { jobsPerLevel: 1 },
       production: { deuterium: { kind: 'scaled', coefficient: 10, growth: 1.1 } },
       energyConsumption: { amount: { kind: 'scaled', coefficient: 20, growth: 1.1 } }
     }
@@ -90,7 +93,7 @@ module.exports = [
     model: { kind: 'building', archetype: 'robotFactory', styleVersion: 1 },
     name: '로봇 공장',
     icon: '🤖',
-    category: 'facilities',
+    category: 'manufacturing',
     description: '건설 속도를 높입니다.',
     cost: { metal: 400, crystal: 120, deuterium: 200 },
     costMultiplier: 2,
@@ -105,7 +108,7 @@ module.exports = [
     model: { kind: 'building', archetype: 'shipyard', styleVersion: 1 },
     name: '함선 공장',
     icon: '🏭',
-    category: 'facilities',
+    category: 'manufacturing',
     description: '함선을 건조합니다.',
     cost: { metal: 400, crystal: 200, deuterium: 100 },
     costMultiplier: 2,
@@ -121,7 +124,7 @@ module.exports = [
     model: { kind: 'building', archetype: 'researchLab', styleVersion: 1 },
     name: '연구소',
     icon: '🔬',
-    category: 'facilities',
+    category: 'manufacturing',
     description: '연구를 진행합니다.',
     cost: { metal: 200, crystal: 400, deuterium: 200 },
     costMultiplier: 2,
@@ -136,7 +139,7 @@ module.exports = [
     model: { kind: 'building', archetype: 'naniteFactory', styleVersion: 1 },
     name: '나노 머신 공장',
     icon: '🔧',
-    category: 'facilities',
+    category: 'manufacturing',
     description: '건설 속도를 극대화합니다.',
     cost: { metal: 1000000, crystal: 500000, deuterium: 100000 },
     costMultiplier: 2,
@@ -152,7 +155,7 @@ module.exports = [
     model: { kind: 'building', archetype: 'metalStorage', styleVersion: 1 },
     name: '금속 저장고',
     icon: '📦',
-    category: 'facilities',
+    category: 'resources',
     description: '금속 저장 용량을 늘립니다.',
     cost: { metal: 1000, crystal: 0, deuterium: 0 },
     costMultiplier: 2,
@@ -175,7 +178,7 @@ module.exports = [
     model: { kind: 'building', archetype: 'crystalStorage', styleVersion: 1 },
     name: '수정 저장고',
     icon: '📦',
-    category: 'facilities',
+    category: 'resources',
     description: '수정 저장 용량을 늘립니다.',
     cost: { metal: 1000, crystal: 500, deuterium: 0 },
     costMultiplier: 2,
@@ -198,7 +201,7 @@ module.exports = [
     model: { kind: 'building', archetype: 'deuteriumTank', styleVersion: 1 },
     name: '중수소 탱크',
     icon: '🛢️',
-    category: 'facilities',
+    category: 'resources',
     description: '중수소 저장 용량을 늘립니다.',
     cost: { metal: 1000, crystal: 1000, deuterium: 0 },
     costMultiplier: 2,
@@ -214,5 +217,47 @@ module.exports = [
         }
       }
     }
+  },
+  {
+    id: 'foodStorage', name: '식량 창고', icon: '📦', category: 'resources',
+    model: { kind: 'building', archetype: 'metalStorage', styleVersion: 1 },
+    description: '식량을 비축하여 주민과 함대를 보급합니다. 레벨마다 저장량이 10,000 증가합니다. 생산 적자는 수경농장으로 해결해야 합니다.',
+    cost: { metal: 1000, crystal: 500, deuterium: 0 }, costMultiplier: 1.6, buildTime: 90,
+    effects: { population: { foodStoragePerLevel: 10000 } }
+  },
+  {
+    model: { kind: 'building', archetype: 'housing', styleVersion: 1 },
+    id: 'housing', name: '주거시설', icon: '🏘️', category: 'population',
+    description: '주민이 거주할 공간을 마련합니다. 레벨마다 인구 수용량이 10 증가합니다.',
+    cost: { metal: 100, crystal: 50, deuterium: 0 }, costMultiplier: 1.5, buildTime: 60,
+    effects: { population: { housingPerLevel: 10 } }
+  },
+  {
+    model: { kind: 'building', archetype: 'hydroponicFarm', styleVersion: 1 },
+    id: 'hydroponicFarm', name: '수경농장', icon: '🌱', category: 'population',
+    description: '주민에게 식량을 공급합니다. 인력이 배치되어야 식량을 생산하며 자동 배치에서 우선합니다.',
+    cost: { metal: 120, crystal: 60, deuterium: 0 }, costMultiplier: 1.5, buildTime: 90,
+    effects: { population: { jobsPerLevel: 1, foodPerLevel: 10 } }
+  },
+  {
+    model: { kind: 'building', archetype: 'cultureCenter', styleVersion: 1 },
+    id: 'cultureCenter', name: '문화센터', icon: '🎭', category: 'population',
+    description: '주민의 문화 수요를 충족하여 행복도와 안정도를 높입니다. 인력이 필요합니다.',
+    cost: { metal: 150, crystal: 100, deuterium: 0 }, costMultiplier: 1.5, buildTime: 120,
+    effects: { population: { jobsPerLevel: 1, culturePerLevel: 10 } }
+  },
+  {
+    id: 'school', name: '교육원', icon: '📚', category: 'population',
+    model: { kind: 'building', archetype: 'school', styleVersion: 1 },
+    description: '교사 1명당 주민 10명의 교육을 지원합니다. 지식은 광산 생산 효율을 최대 25% 높입니다.',
+    cost: { metal: 200, crystal: 150, deuterium: 0 }, costMultiplier: 1.6, buildTime: 150,
+    effects: { population: { jobsPerLevel: 1, knowledgePerLevel: 10 } }
+  },
+  {
+    id: 'clinic', name: '의료센터', icon: '🏥', category: 'population',
+    model: { kind: 'building', archetype: 'clinic', styleVersion: 1 },
+    description: '의료인 1명당 주민 10명의 건강을 지원합니다. 건강은 행복도를 최대 10 높이고 인구 성장을 최대 25% 빠르게 합니다.',
+    cost: { metal: 200, crystal: 100, deuterium: 50 }, costMultiplier: 1.6, buildTime: 150,
+    effects: { population: { jobsPerLevel: 1, healthPerLevel: 10 } }
   }
 ];

@@ -253,6 +253,7 @@ class CombatService {
       if (defenderTypes.length === 0) break;
       
       for (const shot of shots) {
+        if (defenderTypes.length === 0) break;
         const targetType = defenderTypes[Math.floor(this.random() * defenderTypes.length)];
         const target = remaining[targetType];
         

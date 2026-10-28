@@ -1,3 +1,5 @@
+import { createRequestId } from '../../utils/requestId.js';
+
 // One request identity per click; uncertain requests survive reload for this user.
 export class ScoutController {
   constructor({ api, state, notify, onChange, storage = sessionStorage }) {
@@ -51,8 +53,14 @@ export class ScoutController {
   launch(destination) {
     this.ensureAccount();
     if (this.available() < 1) return;
+    let requestId;
+    try { requestId = createRequestId(); }
+    catch (error) {
+      this.notify('정찰 출격 실패', error.message, 'error');
+      return;
+    }
     const order = {
-      requestId: crypto.randomUUID(),
+      requestId,
       originPlanetId: this.state.planet.id,
       destination: { ...destination },
     };
@@ -107,6 +115,7 @@ export class ScoutController {
   }
   async selectTarget(target) {
     this.ensureAccount();
+    if (JSON.stringify(this.target) === JSON.stringify(target)) return;
     if (JSON.stringify(this.target) !== JSON.stringify(target)) {
       this.targetReports = [];
       this.targetCursor = null;
@@ -129,9 +138,12 @@ export class ScoutController {
       }
     }
   }
-  async refresh(target = this.target) {
+  async refresh(target = this.target, { minAge = 0 } = {}) {
     this.ensureAccount();
     if (!this.api.isAuthenticated()) return;
+    if (this.lastRefreshEpoch === this.epoch && Date.now() - (this.lastRefreshAt || 0) < minAge) return;
+    if (this.refreshingEpoch === this.epoch) return;
+    this.refreshingEpoch = this.epoch;
     if (JSON.stringify(this.target) !== JSON.stringify(target)) {
       this.targetReports = [];
       this.targetCursor = null;
@@ -174,6 +186,8 @@ export class ScoutController {
       this.alerts = alerts.alerts;
       this.targetReports = selected.reports;
       this.targetCursor = selected.nextCursor;
+      this.lastRefreshEpoch = epoch;
+      this.lastRefreshAt = Date.now();
       this.historyCursor = history.nextCursor;
       this.alertsCursor = alerts.nextCursor;
       this.error = "";
@@ -183,6 +197,8 @@ export class ScoutController {
         this.error = error.message;
         this.onChange();
       }
+    } finally {
+      if (this.refreshingEpoch === epoch) this.refreshingEpoch = null;
     }
     for (const order of Object.values(this.pending))
       void this.dispatch(order, true);

@@ -1,3 +1,5 @@
+const { selectResearchLabs } = require('../utils/researchNetwork');
+const { researchInfrastructure } = require('../utils/userResearch');
 const { atomic, requireTransactions } = require('./transactions');
 const { settleUserState, formatQueueItem } = require('./GameStateService');
 const Queue = require('../models/BuildingQueue');
@@ -12,7 +14,7 @@ function checkRequirements(user, planet, requirements = {}) {
     if ((planet.buildings?.[id] || 0) < level) fail('REQUIREMENTS_NOT_MET', `시설 ${id} Lv ${level} 필요`);
   }
   for (const [id, level] of Object.entries(requirements.research || {})) {
-    const current = id === 'terraforming' ? user.terraformingLevel : planet.research?.[id];
+    const current = id === 'terraforming' ? user.terraformingLevel : user.research?.[id];
     if ((current || 0) < level) fail('REQUIREMENTS_NOT_MET', `기술 ${id} Lv ${level} 필요`);
   }
 }
@@ -29,15 +31,21 @@ async function enqueue(userId, { type, itemId, planetId, count = 1, action = 'up
     if (!['upgrade', 'demolish'].includes(action) || (action === 'demolish' && type !== 'building')) fail('INVALID_ACTION', '잘못된 명령입니다.');
     if (!Number.isSafeInteger(count) || count < 1 || count > 9999) fail('INVALID_COUNT', '수량은 1~9999 사이의 정수여야 합니다.');
     const queues = await Queue.find(activeFilter(userId)).sort({ endTime: 1, createdAt: 1 });
+    const infrastructure = researchInfrastructure(user, queues, index);
+    if (type === 'research' && infrastructure.labsBusy) fail('LAB_BUSY', '연구소 건설·철거가 끝난 뒤 연구를 예약해 주세요.');
+    if (type === 'building' && itemId === 'researchLab' && infrastructure.researchBusy) fail('LAB_BUSY', '공통 연구가 끝난 뒤 연구소를 건설·철거해 주세요.');
+    const linked = type === 'research' ? selectResearchLabs(infrastructure, definition.requirements?.buildings?.researchLab) : null;
+    if (linked && !linked.eligible) fail('REQUIREMENTS_NOT_MET', `연구를 시작할 행성에 연구소 Lv ${linked.requiredLevel} 필요`);
     const matching = queues.filter(q => q.type === type && q.itemId === itemId
-      && (itemId === 'terraforming' || String(q.planetId) === String(index)));
+      && (type === 'research' || String(q.planetId) === String(index)));
     const current = type === 'building' ? (planet.buildings[itemId] || 0)
-      : itemId === 'terraforming' ? (user.terraformingLevel || 0) : (planet.research?.[itemId] || 0);
-    const projected = matching.length ? matching.at(-1).level : current;
+      : itemId === 'terraforming' ? (user.terraformingLevel || 0) : (user.research?.[itemId] || 0);
+    const projected = matching.length ? Math.max(current, ...matching.map(q => q.level)) : current;
     const nextLevel = action === 'demolish' ? current - 1 : projected + 1;
     let cost = {};
     if (action === 'demolish') {
       if (current < 1 || matching.length) fail('BUILDING_BUSY', '철거할 시설이 없거나 해당 시설의 작업이 진행 중입니다.');
+      if (itemId === 'researchLab' && queues.some(q => q.type === 'research')) fail('BUILDING_BUSY', '공통 연구가 진행 중인 동안 연구소를 철거할 수 없습니다.');
       for (const q of queues.filter(q => String(q.planetId) === String(index))) {
         const req = getEntityDefinition(q.type, q.itemId)?.requirements?.buildings || {};
         if ((req[itemId] || 0) > nextLevel || (itemId === 'researchLab' && q.type === 'research')) {
@@ -48,14 +56,14 @@ async function enqueue(userId, { type, itemId, planetId, count = 1, action = 'up
       // Pending demolition cannot serve as a prerequisite for a new order.
       const effectiveBuildings = planet.buildings.toObject ? planet.buildings.toObject() : { ...planet.buildings };
       for (const q of queues.filter(q => String(q.planetId) === String(index) && q.action === 'demolish')) effectiveBuildings[q.itemId] = q.level;
-      checkRequirements(user, { buildings: effectiveBuildings, research: planet.research }, definition.requirements);
+      checkRequirements(user, { buildings: effectiveBuildings }, definition.requirements);
       if (matching.some(q => q.action === 'demolish')) fail('BUILDING_BUSY', '철거 중인 시설입니다.');
       if (type === 'building') {
-        const area = calculateArea(planet, user.terraformingLevel, queues, String(index));
+        const area = calculateArea(planet, user.terraformingLevel, queues, String(index), config);
         if (area.available < 1) fail('INSUFFICIENT_AREA', `건설 공간 부족: 필요 1칸 / 남은 ${area.available}칸`, { required: 1, available: area.available });
         cost = await calculateBuildingCost(itemId, nextLevel);
       } else if (type === 'research') {
-        if (itemId === 'terraforming' && (projected >= TERRAFORMING_MAX_LEVEL || user.planets.every(p => calculateArea(p, projected).usablePercent >= 100))) fail('TERRAFORMING_MAX_LEVEL', '테라포밍 최대 단계이거나 모든 행성의 가용률이 100%입니다.');
+        if (itemId === 'terraforming' && (projected >= TERRAFORMING_MAX_LEVEL || user.planets.every(p => calculateArea(p, projected, [], '0', config).usablePercent >= 100))) fail('TERRAFORMING_MAX_LEVEL', '테라포밍 최대 단계이거나 모든 행성의 가용률이 100%입니다.');
         cost = await calculateResearchCost(itemId, projected);
       } else cost = await calculateUnitCost(type, itemId, count);
       for (const resource of ['metal', 'crystal', 'deuterium']) {
@@ -64,7 +72,8 @@ async function enqueue(userId, { type, itemId, planetId, count = 1, action = 'up
         if ((planet.resources[resource] || 0) < value) fail('INSUFFICIENT_RESOURCES', '자원이 부족합니다.');
       }
     }
-    const duration = calculateQueueDuration(type, itemId, action === 'demolish' ? current : nextLevel, planet.buildings, count, {
+    const durationBuildings = type === 'research' ? { ...planet.buildings.toObject(), researchLab: linked.effectiveLevel } : planet.buildings;
+    const duration = calculateQueueDuration(type, itemId, action === 'demolish' ? current : nextLevel, durationBuildings, count, {
       serverSpeed: config.serverSpeed,
       timeMultiplier: type === 'building' ? config.buildingSettings?.buildTimeMultiplier : type === 'research' ? config.researchSettings?.researchTimeMultiplier : 1
     });
@@ -92,7 +101,7 @@ async function cancel(userId, queueId) {
     if (!queue) fail('QUEUE_NOT_ACTIVE', '이미 완료되었거나 취소된 작업입니다.');
     // Keep level/cost reservations coherent: cancel later levels first.
     const later = await Queue.findOne({ ...activeFilter(userId), type: queue.type, itemId: queue.itemId,
-      ...(queue.itemId === 'terraforming' ? {} : { planetId: queue.planetId }), level: { $gt: queue.level } });
+      ...(queue.type === 'research' ? {} : { planetId: queue.planetId }), level: { $gt: queue.level } });
     if (['building', 'research'].includes(queue.type) && later) fail('DEPENDENT_QUEUE', '같은 항목의 뒤쪽 예약부터 취소해 주세요.');
     const planet = user.planets[planetIndex(user, queue.planetId)];
     const rate = queue.status === 'pending' ? 1 : (config.resourceSettings?.cancellationRefundRate ?? 0.8);

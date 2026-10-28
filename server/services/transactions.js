@@ -72,23 +72,9 @@ function transactionalRoute(handler) {
       });
       res.status(status).json(body);
     } catch (error) {
-      const conflict = error.name === "VersionError" || error.code === 11000;
-      const unsupported =
-        error.code === 20 ||
-        /replica set|Transaction numbers/.test(error.message);
-      res
-        .status(error.statusCode || (conflict ? 409 : unsupported ? 503 : 500))
-        .json(
-          error.responseBody || {
-            error: unsupported
-              ? "건설·함대 기능에는 트랜잭션을 지원하는 DB 연결이 필요합니다."
-              : conflict
-                ? "상태가 변경되었습니다. 최신 상태로 다시 시도하십시오."
-                : error.message,
-            code:
-              error.code || (conflict ? "STATE_CONFLICT" : "REQUEST_FAILED"),
-          },
-        );
+      if (error.responseBody) {
+        require('../utils/apiErrors').sendError(req, res, Object.assign(error, { code: error.responseBody.code }));
+      } else require('../utils/apiErrors').sendError(req, res, error);
     }
   };
 }

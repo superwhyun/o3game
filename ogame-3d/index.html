@@ -102,58 +102,76 @@
         </div>
       </div>
 
+      <div class="colony-status">
       <div class="holo-resources" aria-label="자원 현황">
         <div class="resource-cell" data-resource="metal">
-          <span class="resource-name">금속</span>
+          <span class="resource-name"><svg class="resource-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 9-4 9 4-9 4-9-4Z M3 7v10l9 4 9-4V7 M12 11v10"/></svg>금속</span>
           <span class="resource-value" id="metal-count">0</span>
           <span class="resource-rate" id="metal-rate">+0/h</span>
           <span class="resource-meter" id="metal-ring" aria-hidden="true"></span>
           <span class="resource-fill sr-only" id="metal-fill">0.0%</span>
         </div>
         <div class="resource-cell" data-resource="crystal">
-          <span class="resource-name">수정</span>
+          <span class="resource-name"><svg class="resource-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3 8 0 5 7-9 11L3 10l5-7Z M3 10h18 M8 3l-1 7 5 11 5-11-1-7"/></svg>수정</span>
           <span class="resource-value" id="crystal-count">0</span>
           <span class="resource-rate" id="crystal-rate">+0/h</span>
           <span class="resource-meter" id="crystal-ring" aria-hidden="true"></span>
           <span class="resource-fill sr-only" id="crystal-fill">0.0%</span>
         </div>
         <div class="resource-cell" data-resource="deuterium">
-          <span class="resource-name">중수소</span>
+          <span class="resource-name"><svg class="resource-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3s-7 8-7 12a7 7 0 0 0 14 0c0-4-7-12-7-12Z M8 15a4 4 0 0 0 4 4"/></svg>중수소</span>
           <span class="resource-value" id="deuterium-count">0</span>
           <span class="resource-rate" id="deuterium-rate">+0/h</span>
           <span class="resource-meter" id="deuterium-ring" aria-hidden="true"></span>
           <span class="resource-fill sr-only" id="deuterium-fill">0.0%</span>
         </div>
+        <div class="resource-cell food-resource" data-resource="food" title="식량 재고 및 시간당 수지">
+          <span class="resource-name"><svg class="resource-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V6 M12 8C7 8 5 5 5 2c5 0 7 3 7 6Z M12 13c5 0 7-3 7-6-5 0-7 3-7 6Z M12 18c-5 0-7-3-7-6 5 0 7 3 7 6Z"/></svg>식량</span>
+          <span class="resource-value" id="food-count">—</span>
+          <span class="resource-rate" id="food-rate">—/h</span>
+          <span class="resource-meter" id="food-ring" aria-hidden="true"></span>
+          <span class="resource-fill sr-only" id="food-fill">0.0%</span>
+        </div>
         <div class="resource-cell energy" data-resource="energy">
-          <span class="resource-name">에너지</span>
+          <span class="resource-name"><svg class="resource-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-8 12h6l-1 8 9-13h-6l0-7Z"/></svg>에너지</span>
           <span class="resource-value" id="energy-count">0</span>
           <span class="resource-rate" id="energy-rate">0/0</span>
           <span class="resource-meter" id="energy-ring" aria-hidden="true"></span>
         </div>
+        <button type="button" class="resource-cell development-cell" id="planet-development" aria-label="행성 개발 현황" title="행성 개발 현황" disabled>
+          <span class="resource-name"><svg class="resource-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v18H3z M3 9h18 M3 15h18 M9 3v18 M15 3v18"/></svg>면적 <span id="planet-development-rate">—</span></span>
+          <span class="resource-value" id="planet-development-free">—</span>
+          <span class="resource-rate" id="planet-development-reserved">예약 0칸</span>
+          <span class="resource-meter" id="planet-development-meter" aria-hidden="true"></span>
+          <span class="sr-only" id="planet-development-summary"></span>
+        </button>
+        <div class="resource-cell population-resource" data-resource="population" title="인구 및 주거 수용량">
+          <span class="resource-name"><svg class="resource-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-3a8 8 0 0 1 16 0v3"/></svg>인구</span>
+          <span class="resource-value" id="header-population-count">—</span>
+          <span class="resource-rate" id="header-population-housing">주거 —</span>
+          <span class="resource-meter" id="header-population-meter" aria-hidden="true"></span>
+        </div>
+      </div>
+      <div id="storage-warnings" class="storage-warnings" aria-live="polite" hidden></div>
+
       </div>
 
-      <div class="header-right">
+
+    </header>
+
+    <nav class="holo-sidebar left" aria-label="사령부 메뉴">
+      <div class="header-right command-controls" id="command-controls" aria-label="행성 및 사용자 설정">
+        <div class="planet-switcher">
           <label class="sr-only" for="planet-select">소유 행성 선택</label>
           <select id="planet-select" aria-label="소유 행성 선택"></select>
+          <button class="planet-rename-button" id="planet-rename" type="button" aria-label="콜로니 이름 변경" title="콜로니 이름 변경">이름 변경</button>
+        </div>
         <div class="time-display">
           <span class="label" id="system-date">宇宙暦</span>
           <span class="value" id="system-time">00:00:00</span>
         </div>
-        <div class="planet-status">
-          <span class="label">좌표</span>
-          <span class="value" id="coords-display">[1:1:1]</span>
-        </div>
-        <button class="esm-toggle" id="esm-toggle" title="절전 모드 전환">
-          <span class="icon" aria-hidden="true">◐</span>
-          <span class="status-text">표준</span>
-        </button>
-        <div class="user-section" id="user-section">
-          <button class="holo-btn-small" id="login-btn">로그인</button>
-        </div>
-      </div>
-    </header>
 
-    <nav class="holo-sidebar left" aria-label="사령부 메뉴">
+      </div>
       <div class="nav-section">
         <h3 class="section-title">內政 <span>내정</span></h3>
         <button class="holo-btn active" data-view="dashboard">
@@ -187,10 +205,20 @@
           <span class="label">성계도</span>
           <span class="shortcut">5</span>
         </button>
+        <button class="holo-btn" data-view="trade"><span class="label">자원거래</span></button>
+        <button class="holo-btn" data-view="battleRecords" id="battle-records-btn"><span class="label">전투 기록 <span id="battle-unread-count" hidden></span></span></button>
+        <button class="holo-btn" data-view="scoutRecords" id="scout-records-btn"><span class="label">정찰 기록</span></button>
+      </div>
+      <div class="sidebar-account">
+        <button class="holo-btn" data-view="accountSettings" id="account-settings-btn"><span class="label">사용자 설정</span><span class="shortcut">⚙</span></button>
         <button class="holo-btn admin-only hidden" data-view="admin" id="admin-btn">
           <span class="label">관리 본부</span>
           <span class="shortcut">◆</span>
         </button>
+        <button class="holo-btn" data-view="improvements" id="improvements-btn"><span class="label">개선 제안</span><span class="shortcut">＋</span></button>
+        <div class="user-section" id="user-section">
+          <button class="holo-btn-small" id="login-btn">로그인</button>
+        </div>
       </div>
     </nav>
 
@@ -208,7 +236,13 @@
           </div>
         </header>
 
+        <div class="dashboard-content">
+        <div id="mode-graphics" class="mode-graphics" aria-label="행성 현황 그래프"></div>
         <div class="dashboard-grid">
+          <article class="holo-card population-card">
+            <div class="card-header"><h3>주민 생활 현황</h3><span class="card-unit">현재 행성</span></div>
+            <section id="dashboard-population" class="population-details" aria-live="polite"></section>
+          </article>
           <article class="holo-card chart-card">
             <div class="card-header"><h3>자원 추이</h3><span class="live-indicator">LIVE</span></div>
             <div class="chart-container"><canvas id="resource-chart"></canvas></div>
@@ -236,6 +270,14 @@
             </div>
           </article>
         </div>
+        </div>
+      </section>
+
+      <section class="holo-panel hidden" id="trade-panel" aria-labelledby="trade-title">
+        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">交易</span><h2 id="trade-title">자원거래</h2></div></header>
+        <div class="trade-content">
+          <form id="resource-trade-form" class="exchange-form"></form>
+        </div>
       </section>
 
       <section class="holo-panel hidden" id="buildings-panel" aria-labelledby="buildings-title">
@@ -247,12 +289,11 @@
           </div>
         </header>
         <div class="panel-body">
-          <section id="building-area" class="planet-area" aria-label="행성 개발 현황"></section>
           <div id="buildings-browser"></div>
-          <div class="panel-queue-section" id="buildings-queue-section">
-            <div class="panel-queue-title">건설 대기열</div>
+          <details class="panel-queue-section" id="buildings-queue-section" open>
+            <summary class="panel-queue-title">건설 대기열 <span class="panel-queue-count"></span></summary>
             <div id="buildings-panel-queue" class="panel-queue-list"></div>
-          </div>
+          </details>
         </div>
       </section>
 
@@ -260,17 +301,16 @@
         <header class="panel-header">
           <div class="panel-title">
             <span class="panel-hanja">硏究</span>
-            <h2 id="research-title">연구</h2>
+            <h2 id="research-title">연구</h2><span id="research-network-summary" class="research-network-summary"></span>
             <span class="panel-sub">RESEARCH</span>
           </div>
         </header>
         <div class="panel-body">
-          <section id="research-area" class="planet-area" aria-label="테라포밍 현황"></section>
           <div id="research-browser"></div>
-          <div class="panel-queue-section" id="research-queue-section">
-            <div class="panel-queue-title">연구 대기열</div>
+          <details class="panel-queue-section" id="research-queue-section" open>
+            <summary class="panel-queue-title">연구 대기열 <span class="panel-queue-count"></span></summary>
             <div id="research-panel-queue" class="panel-queue-list"></div>
-          </div>
+          </details>
         </div>
       </section>
 
@@ -284,10 +324,10 @@
         </header>
         <div class="panel-body">
           <div id="shipyard-browser"></div>
-          <div class="panel-queue-section" id="shipyard-queue-section">
-            <div class="panel-queue-title">건조 대기열</div>
+          <details class="panel-queue-section" id="shipyard-queue-section" open>
+            <summary class="panel-queue-title">건조 대기열 <span class="panel-queue-count"></span></summary>
             <div id="shipyard-panel-queue" class="panel-queue-list"></div>
-          </div>
+          </details>
         </div>
       </section>
 
@@ -300,10 +340,11 @@
           </div>
           <div class="galaxy-nav">
             <button class="nav-arrow" id="galaxy-prev" aria-label="이전 성계">◀</button>
-            <label class="coord-field"><span>은하</span><input id="galaxy-input" type="number" min="1" max="9" value="1" inputmode="numeric"></label>
+            <label class="coord-field"><span>은하</span><input id="galaxy-input" data-touch-skip="true" type="number" min="1" max="9" value="1" inputmode="numeric"></label>
             <span class="coord-sep" aria-hidden="true">:</span>
-            <label class="coord-field"><span>성계</span><input id="system-input" type="number" min="1" max="499" value="1" inputmode="numeric"></label>
+            <label class="coord-field"><span>성계</span><input id="system-input" data-touch-skip="true" type="number" min="1" max="499" value="1" inputmode="numeric"></label>
             <button class="nav-arrow" id="galaxy-next" aria-label="다음 성계">▶</button>
+            <button type="button" class="holo-btn-small" id="galaxy-apply">이동</button>
             <button class="holo-btn-small" id="galaxy-home">본거지</button>
           </div>
         </header>
@@ -318,9 +359,28 @@
       </section>
       <section class="holo-panel hidden" id="combat-panel" aria-labelledby="combat-title">
         <header class="panel-header"><div class="panel-title"><span class="panel-hanja">運用</span><h2 id="combat-title">함대운용</h2><span class="panel-sub">TACTICAL OPERATIONS</span></div><span class="panel-sub">편성한 함대를 목표 행성으로</span></header>
-        <div class="fleet-scroll"><section id="strike-map" aria-label="함대운용 지도"></section><div id="combat-missions"></div><details class="combat-secondary"><summary>좌표로 목표 지정</summary><form id="manual-combat-target"><label class="field">은하<input name="galaxy" type="number" min="1" max="9" value="1" required></label><label class="field">성계<input name="system" type="number" min="1" max="499" value="1" required></label><label class="field">행성<input name="planet" type="number" min="1" max="15" value="1" required></label><button class="cmd-btn" type="submit">목표 확인</button></form></details><details class="combat-secondary" id="scout-reports"><summary>정찰 보고 · 침입 탐지</summary><div id="scout-reports-content" class="scout-report-grid"></div></details><details class="combat-secondary" id="combat-reports"><summary>전투 보고</summary><div class="movement-log"></div></details></div>
+        <div class="fleet-scroll"><section id="strike-map" aria-label="함대운용 지도"></section><div id="combat-missions"></div></div>
       </section>
 
+      <section class="holo-panel hidden" id="improvements-panel" aria-labelledby="improvements-title">
+        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">提案</span><h2 id="improvements-title">개선 제안</h2></div></header>
+        <div class="improvements-scroll" id="improvements-content"></div>
+      </section>
+
+      <section class="holo-panel hidden" id="battle-records-panel" aria-labelledby="battle-records-title">
+        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">戰報</span><h2 id="battle-records-title">전투 기록</h2></div><button class="holo-btn-small" id="battle-records-refresh">새로고침</button></header>
+        <div class="battle-records-scroll"><p id="battle-records-status" role="status" aria-live="polite"></p><div id="battle-records-list"></div><button class="holo-btn-small" id="battle-records-more" hidden>이전 기록 더 보기</button></div>
+      </section>
+
+      <section class="holo-panel hidden" id="scout-records-panel" aria-labelledby="scout-records-title">
+        <header class="panel-header"><div class="panel-title"><span class="panel-hanja">偵報</span><h2 id="scout-records-title">정찰 기록</h2></div><button class="holo-btn-small" id="scout-records-refresh">새로고침</button></header>
+        <div class="scout-records-scroll"><div id="scout-records-content" class="scout-report-grid"></div></div>
+      </section>
+
+      <section class="holo-panel hidden" id="account-settings-panel" aria-labelledby="account-settings-title">
+        <header class="panel-header"><div class="panel-title"><h2 id="account-settings-title">사용자 설정</h2></div></header>
+        <div id="account-settings-content" class="account-settings-scroll"></div>
+      </section>
       <!-- Admin Panel -->
       <div class="holo-panel hidden" id="admin-panel">
         <header class="panel-header">
@@ -366,7 +426,7 @@
               <!-- Server Speed Control -->
               <div class="holo-card admin-card">
                 <div class="card-header">
-                  <h3>SERVER SPEED</h3>
+                  <h3>경제·건설 배율</h3>
                   <span class="badge" id="current-speed">1x</span>
                 </div>
                 <div class="speed-control">
@@ -379,7 +439,7 @@
                     <button class="speed-btn" data-speed="100">100x</button>
                   </div>
                   <div class="speed-info">
-                    <span>Resource production, building time, and fleet speed will be multiplied</span>
+                    <span>자원 생산·인구·건설·연구에 적용합니다. 함대 이동 배율은 Game Settings에서 별도로 설정합니다.</span>
                   </div>
                 </div>
               </div>
@@ -447,6 +507,8 @@
           <!-- TAB 2: USER MANAGEMENT -->
           <!-- ═══════════════════════════════════════════════════════════════ -->
           <div class="admin-tab-content" id="tab-users">
+            <div class="users-kind-tabs" role="group" aria-label="사용자 유형"><button type="button" data-user-kind="human" aria-pressed="true">일반 이용자</button><button type="button" data-user-kind="bot" aria-pressed="false">AI 봇</button></div>
+            <div id="users-human-section">
             <div class="holo-card admin-card full-width">
               <div class="card-header">
                 <h3>USER MANAGEMENT</h3>
@@ -509,12 +571,33 @@
                 <div class="pagination" id="user-pagination"></div>
               </div>
             </div>
+            </div><div id="tab-ai" hidden></div>
           </div>
           
           <!-- ═══════════════════════════════════════════════════════════════ -->
           <!-- TAB 3: GAME SETTINGS -->
           <!-- ═══════════════════════════════════════════════════════════════ -->
           <div class="admin-tab-content" id="tab-settings">
+            <form class="holo-card admin-card" id="flight-settings-form">
+              <div class="card-header"><h3>함대 이동 속도</h3></div>
+              <div class="setting-item"><label for="setting-flight-speed">이동 배율</label><select id="setting-flight-speed" name="flightSpeedMultiplier" required disabled><option value="1">1배 · 기본</option></select></div>
+              <p>건설·생산 배율과 독립적입니다. 정찰·개척·이동·수송·공격에 공통 적용합니다. 변경 후 출발하는 임무부터 적용됩니다.</p>
+              <p id="flight-settings-message" role="status"></p>
+              <button type="submit" class="holo-action-btn">이동 배율 저장</button>
+            </form>
+            <form class="holo-card admin-card" id="area-settings-form">
+              <div class="card-header"><h3>행성 면적 설정</h3></div>
+              <div class="setting-item"><label for="setting-bonus-usable-fields">행성당 추가 가용면적 (칸)</label><input id="setting-bonus-usable-fields" name="bonusUsableFields" type="number" min="0" step="1" required disabled value="40"></div>
+              <p>기본값 40칸. 모든 기존·신규 행성에 적용하며, 총면적을 넘지 않습니다. 값을 줄여도 기존 건물은 유지됩니다.</p>
+              <p id="area-settings-message" role="status"></p>
+              <button type="submit" class="holo-action-btn">면적 설정 저장</button>
+            </form>
+            <form class="holo-card admin-card" id="population-settings-form">
+              <div class="card-header"><h3>인구 경제 설정</h3></div>
+              <div class="population-settings-grid" id="population-settings-fields"></div>
+              <p id="population-settings-message" role="status"></p>
+              <button type="submit" class="holo-action-btn">인구 설정 저장</button>
+            </form>
             <div class="admin-grid">
               <!-- Game Settings -->
               <div class="holo-card admin-card wide">
@@ -661,8 +744,9 @@
       <div class="info-section">
         <h3 class="section-title">行星 <span>행성 정보</span></h3>
         <div class="planet-holo">
-          <div class="planet-visual" id="planet-visual" aria-hidden="true"></div>
+          <div class="planet-visual" id="planet-visual" role="img" aria-label="행성 모습"></div>
           <dl class="planet-data">
+            <div class="data-row"><dt class="label">특성</dt><dd class="value" id="planet-environment">—</dd></div>
             <div class="data-row"><dt class="label">명칭</dt><dd class="value" id="planet-name">Colony-1</dd></div>
             <div class="data-row"><dt class="label">직경</dt><dd class="value" id="planet-size">12,800km</dd></div>
             <div class="data-row"><dt class="label">기온</dt><dd class="value" id="planet-temp">-20°C ~ 40°C</dd></div>

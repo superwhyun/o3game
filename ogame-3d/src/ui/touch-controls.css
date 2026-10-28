@@ -1,0 +1,50 @@
+/* Compact touch alternatives retain the original precise numeric inputs. */
+.touch-number { display:inline-flex; flex-direction:column; gap:4px; min-width:0; max-width:100%; vertical-align:middle; }
+.touch-number-row { display:flex; align-items:center; min-width:0; width:100%; }
+.touch-number .touch-number-row input[type=number] { width:100%; min-width:34px; max-width:100%; text-align:center; padding:4px; }
+.touch-number button, .cargo-controls button { color:var(--text-dim); background:var(--ink-1, #101925); border:1px solid var(--line-strong, #344256); border-radius:4px; cursor:pointer; font-size:12px; }
+.touch-number-row > button { min-width:30px; min-height:32px; padding:0 5px; flex:none; }
+.quantity-presets { display:flex; flex-wrap:wrap; gap:3px; min-width:0; }
+.quantity-presets > button { flex:1; min-width:0; min-height:28px; padding:2px 4px; white-space:nowrap; font-size:11px; }
+.touch-number input[type=range], .cargo-controls input[type=range] { width:100%; min-width:0; height:26px; padding:0; margin:0; accent-color:var(--gold, #c8a760); cursor:pointer; touch-action:pan-y; }
+.touch-number button:disabled, .cargo-controls button:disabled { opacity:.4; cursor:default; }
+.touch-number button:focus-visible, .cargo-controls button:focus-visible { outline:2px solid var(--gold-bright); outline-offset:2px; }
+.ship-count-controls .touch-number, .squad-stepper .touch-number { flex:1; }
+.ship-count-controls .quantity-presets button { min-width:0; height:28px; font-size:10px; }
+.ship-count-controls .touch-number input[type=range] { height:26px; background:none; border:none; }
+.unit-field .touch-number { width:160px; }
+.cargo-controls { display:grid; gap:14px; margin-top:8px; }
+.cargo-help { color:var(--text-faint); font-size:11px; margin:0; }
+.cargo-resource { display:grid; gap:1px; min-width:0; }
+.cargo-heading { display:grid; align-items:center; grid-template-columns:auto minmax(0,1fr) auto; gap:6px; font-size:12px; }
+.cargo-heading output { color:var(--gold-bright); font-variant-numeric:tabular-nums; text-align:right; }
+.cargo-total { color:var(--text-dim); font-size:12px; margin:2px 0; }
+.cargo-exact-toggle { justify-self:start; padding:5px 8px; }
+.cargo-exact-fields { display:grid; gap:6px; grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:8px; }
+.cargo-exact-fields[hidden] { display:none; }
+.direct-colony-form .cargo-controls, .direct-colony-form .cargo-exact-fields { grid-column:1 / -1; }
+@media (max-width:700px) {
+  .touch-number-row > button { min-width:36px; min-height:40px; }
+  .touch-number .touch-number-row input { min-height:40px; }
+  .quantity-presets > button, .ship-count-controls .quantity-presets button { min-height:34px; height:auto; }
+  .touch-number input[type=range], .cargo-controls input[type=range] { height:36px; }
+  .cargo-exact-toggle { min-height:36px; }
+  .unit-field .touch-number { width:150px; }
+}
+.touch-number .touch-number-row input[type=number], .cargo-exact-fields input[type=number] { color:var(--gold-bright); background:var(--ink-0, #070e18); border:1px solid var(--line-strong, #344256); border-radius:4px; }
+/* Existing ship +/- buttons stay on the first row; sliders span the entire card. */
+.ship-count-controls, .squad-stepper { display:grid; grid-template-columns:44px minmax(0,1fr) 44px; gap:4px 0; }
+.squad-stepper { grid-template-columns:28px minmax(0,1fr) 28px; }
+.ship-count-controls > button:first-child, .squad-stepper > button:first-child { grid-column:1; grid-row:1; }
+.ship-count-controls > button:last-child, .squad-stepper > button:last-child { grid-column:3; grid-row:1; }
+.ship-count-controls .touch-number.has-stepper, .squad-stepper .touch-number.has-stepper { display:contents; }
+.has-stepper .touch-number-row { grid-column:2; grid-row:1; }
+.has-stepper .touch-number-row input[type=number] { min-width:0; }
+.has-stepper > input[type=range], .has-stepper > .quantity-presets { grid-column:1 / -1; }
+.ship-count-controls .quantity-presets > button { flex:1; }
+/* Keep quantity shortcuts quiet; a slider and one maximum action are enough. */
+.touch-number .quantity-presets { justify-content:flex-end; }
+.touch-number .quantity-presets > button { flex:none; background:transparent; border:0; color:var(--text-dim); min-height:24px; padding:0 4px; font-size:11px; }
+.cargo-controls .cargo-fill { border:0; background:none; padding:4px 0 4px 8px; min-height:28px; color:var(--text-dim); font-size:11px; }
+.cargo-controls .cargo-fill:hover { color:var(--gold-bright); }
+@media (max-width:700px) { .cargo-controls .cargo-fill { min-height:36px; } }

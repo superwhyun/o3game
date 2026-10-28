@@ -2,6 +2,10 @@ const mongoose = require('mongoose');
 
 const battleReportSchema = new mongoose.Schema({
   movementId: mongoose.Schema.Types.ObjectId,
+  formationName: String,
+  // Historical reports have no fuel record. Current launches do not charge fuel.
+  fuelConsumed: { type: mongoose.Schema.Types.Mixed, default: null },
+  fuelPolicy: String,
   // Participants
   attacker: {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -58,6 +62,10 @@ const battleReportSchema = new mongoose.Schema({
     winner: { type: String, enum: ['attacker', 'defender', 'draw'] },
     attackerLosses: Object,
     defenderLosses: Object,
+    pirateLevel: Number,
+    pirateCleared: Boolean,
+    attackerCrewLosses: Number,
+    defenderCrewLosses: Number,
     debrisField: {
       metal: Number,
       crystal: Number
@@ -72,9 +80,13 @@ const battleReportSchema = new mongoose.Schema({
   },
   
   // Read status
+  attackerDeleted: { type: Boolean, default: false },
+  defenderDeleted: { type: Boolean, default: false },
   attackerRead: { type: Boolean, default: false },
   defenderRead: { type: Boolean, default: false }
 });
 
+battleReportSchema.index({ 'attacker.userId': 1, _id: -1 });
+battleReportSchema.index({ 'defender.userId': 1, _id: -1 });
 battleReportSchema.index({ movementId: 1 }, { unique: true, partialFilterExpression: { movementId: { $type: 'objectId' } } });
 module.exports = mongoose.model('BattleReport', battleReportSchema);

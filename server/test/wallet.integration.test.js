@@ -42,7 +42,7 @@ test('wallet linking proves ownership once, binds one wallet per account and can
     const roninForm = `ronin:${account.address.slice(2)}`;
 
     assert.equal((await call(null, 'GET', '/wallet')).status, 401);
-    assert.deepEqual((await call(alice, 'GET', '/wallet')).body, { enabled: true, linked: false, address: null, linkedAt: null });
+    assert.deepEqual((await call(alice, 'GET', '/wallet')).body, { network: { chainId: 202601, name: 'Ronin Saigon', rpcUrl: null }, enabled: true, linked: false, address: null, linkedAt: null });
     assert.equal((await call(alice, 'POST', '/wallet/challenge', { address: 'nonsense' })).body.code, 'INVALID_ADDRESS');
     assert.equal((await call(alice, 'POST', '/wallet/challenge', { address: '0x' + '0'.repeat(40) })).body.code, 'INVALID_ADDRESS');
 

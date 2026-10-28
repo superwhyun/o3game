@@ -213,3 +213,19 @@ test('a purchase that can no longer be delivered is refunded before the delivery
     assert.equal((await h.orderOf(expiring.orderId)).status, 'EXPIRED');
   } finally { await h.close(); }
 });
+
+test('administrators switch products and speed-up targets with an audit trail', { timeout: 120000 }, async () => {
+  const h = await harness();
+  try {
+    const boss = await h.makeUser('shopboss', '0x' + '55'.repeat(20));
+    const overview = await h.shop.adminOverview();
+    assert.equal(overview.enabled, true);
+    assert.deepEqual(overview.allowedTypes, ['building', 'research', 'ship']);
+    assert.ok(overview.products.some((p) => p.id === 'speedup.1h' && p.price === '0.500000'));
+    assert.deepEqual((await h.shop.setSpeedupTypes(boss._id, ['building', 'building', 'ship'])).allowedTypes, ['building', 'ship']);
+    await assert.rejects(h.shop.setSpeedupTypes(boss._id, ['defense']), (e) => e.code === 'INVALID_TYPES');
+    await assert.rejects(h.shop.setSpeedupTypes(boss._id, 'building'), (e) => e.code === 'INVALID_TYPES');
+    assert.deepEqual((await h.shop.adminOverview()).allowedTypes, ['building', 'ship']);
+    assert.equal(await mongoose.model('AuditLog').countDocuments({ action: 'shop.speedupTypes' }), 1);
+  } finally { await h.close(); }
+});

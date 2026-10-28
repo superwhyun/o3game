@@ -1,7 +1,7 @@
 /**
  * Star-system view: orbital chart plus a slot list and a detail card.
  */
-import { escapeHtml } from '../dom.js';
+import { escapeHtml, formatAmount } from '../dom.js';
 import { FleetTrafficController } from './FleetTrafficController.js';
 import { FleetTrafficLayer } from './FleetTrafficLayer.js';
 import { OrbitChart, relationOf } from './OrbitChart.js';
@@ -120,11 +120,12 @@ export class GalaxyView {
       const relation = relationOf(position);
       const title = position.planet ? escapeHtml(position.planet.name) : '미점령 행성';
       const owner = position.planet ? escapeHtml(position.planet.username) : '';
+      const marks = `${position.monster ? '<span class="slot-mark mark-monster" title="괴수">괴수</span>' : ''}${position.debris ? '<span class="slot-mark mark-debris" title="전투 잔해">잔해</span>' : ''}`;
       return `<li><button type="button" class="slot-row slot-${relation} ${position.position === this.selected ? 'is-selected' : ''}"
           data-slot="${position.position}" aria-pressed="${position.position === this.selected}">
           <span class="slot-index">${position.position}</span>
           <span class="slot-name">${title}</span>
-          <span class="slot-owner">${owner}</span>
+          <span class="slot-owner">${owner}${marks}</span>
         </button></li>`;
     }).join('');
   }
@@ -137,20 +138,29 @@ export class GalaxyView {
     }
     const relation = relationOf(position);
     const { galaxy, system } = this.coords;
-    const action = {
-      own: '<button type="button" class="cmd-btn" disabled>아군 행성</button>',
-      other: '<button type="button" class="cmd-btn primary" data-action="target">작전 목표 지정</button>',
-      empty: '<button type="button" class="cmd-btn primary" data-action="target">개척 함대 선택</button>'
-    }[relation];
+    const action = position.monster
+      ? '<button type="button" class="cmd-btn primary" data-action="target">괴수 공격 목표 지정</button>'
+      : {
+        own: '<button type="button" class="cmd-btn" disabled>아군 행성</button>',
+        other: '<button type="button" class="cmd-btn primary" data-action="target">작전 목표 지정</button>',
+        empty: '<button type="button" class="cmd-btn primary" data-action="target">개척 함대 선택</button>'
+      }[relation];
+    const extra = `${position.monster ? `
+        <div class="spec-row"><dt>괴수</dt><dd>${escapeHtml(position.monster.name)}</dd></div>
+        <div class="spec-row"><dt>체력</dt><dd>${Number(position.monster.hpPercent).toFixed(1)}%</dd></div>
+        <div class="spec-row"><dt>CGC 보상 풀</dt><dd>${escapeHtml(position.monster.pool)} CGC</dd></div>
+        <div class="spec-row"><dt>이벤트 종료</dt><dd>${new Date(position.monster.endsAt).toLocaleString('ko-KR')}</dd></div>` : ''}${position.debris ? `
+        <div class="spec-row"><dt>전투 잔해</dt><dd>금속 ${formatAmount(position.debris.metal)} · 수정 ${formatAmount(position.debris.crystal)}</dd></div>` : ''}`;
 
     this.detailEl.innerHTML = `
       <p class="detail-kicker">[${galaxy}:${system}:${position.position}] · 제${position.position}궤도</p>
-      <h3 class="slot-detail-title">${position.planet ? escapeHtml(position.planet.name) : '미점령 행성'}</h3>
+      <h3 class="slot-detail-title">${position.monster ? escapeHtml(position.monster.name) : position.planet ? escapeHtml(position.planet.name) : '미점령 행성'}</h3>
       <dl class="spec-list single">
         <div class="spec-row"><dt>관계</dt><dd class="rel-${relation}">${RELATION_LABEL[relation]}</dd></div>
         ${position.planet ? `
           <div class="spec-row"><dt>사령관</dt><dd>${escapeHtml(position.planet.username)}</dd></div>
           <div class="spec-row"><dt>통신</dt><dd>${position.planet.isOnline ? '접속 중' : '부재'}</dd></div>` : ''}
+        ${extra}
       </dl>
       <div class="slot-detail-actions">${action}</div>`;
     this.onSelect?.(position, this.coords);

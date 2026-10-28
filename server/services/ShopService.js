@@ -259,4 +259,28 @@ async function setDisabled(actorId, skus) {
   return { disabled: config.shop.disabled };
 }
 
-module.exports = { catalog, createOrder, listOrders, getOrder, relayAuthorization, processOrders, setDisabled, orderView, MAX_OPEN_ORDERS };
+/** Which queue types stored speed-up time may be spent on (administrator setting). */
+async function setSpeedupTypes(actorId, types) {
+  const allowed = ['building', 'research', 'ship'];
+  if (!Array.isArray(types) || types.some((type) => !allowed.includes(type))) fail(400, 'INVALID_TYPES', '가속을 허용할 수 있는 대상은 건설·연구·함선입니다.');
+  const config = await GameConfig.getConfig();
+  const previous = [...(config.speedupSettings?.allowedTypes || [])];
+  config.speedupSettings = { allowedTypes: [...new Set(types)] };
+  config.updatedAt = new Date();
+  config.updatedBy = actorId;
+  await config.save();
+  await AuditLog.create({ actorId, action: 'shop.speedupTypes', payload: { previous, allowedTypes: config.speedupSettings.allowedTypes } });
+  return { allowedTypes: config.speedupSettings.allowedTypes };
+}
+
+async function adminOverview() {
+  const config = await GameConfig.getConfig();
+  return {
+    enabled: metanomic.isEnabled(),
+    disabled: [...(config.shop?.disabled || [])],
+    allowedTypes: [...(config.speedupSettings?.allowedTypes || [])],
+    products: products.map((p) => ({ id: p.id, kind: p.kind, name: p.name, price: formatCgc(p.priceMicro) }))
+  };
+}
+
+module.exports = { setSpeedupTypes, adminOverview, catalog, createOrder, listOrders, getOrder, relayAuthorization, processOrders, setDisabled, orderView, MAX_OPEN_ORDERS };

@@ -84,7 +84,7 @@ router.get('/galaxy', authMiddleware, async (req, res) => {
     }).select('_id username isOnline planets').lean();
 
     const debris = await require('../services/DebrisService').inSystem(galaxy, system);
-    const monsters = await require('../services/MonsterService').inSystem(galaxy, system);
+    const monsters = await require('../services/MonsterService').inSystem(galaxy, system, req.user._id);
     const { conflicts, ...view } = buildGalaxySystem({
       galaxy,
       system,

@@ -118,6 +118,33 @@ class ApiService {
     return data;
   }
   
+  // ─── CGC wallet, shop, speed-up, monsters ────────────────────────────────────
+
+  getWallet() { return this.request('/api/wallet'); }
+  requestWalletChallenge(address) {
+    return this.request('/api/wallet/challenge', { method: 'POST', body: JSON.stringify({ address }) });
+  }
+  linkWallet(challengeId, signature) {
+    return this.request('/api/wallet/link', { method: 'POST', body: JSON.stringify({ challengeId, signature }) });
+  }
+
+  getShopCatalog() { return this.request('/api/shop/catalog'); }
+  getShopOrders() { return this.request('/api/shop/orders'); }
+  createShopOrder(sku, quantity, requestId) {
+    return this.request('/api/shop/orders', { method: 'POST', body: JSON.stringify({ sku, quantity, requestId }) });
+  }
+  getShopOrder(orderId) { return this.request(`/api/shop/orders/${encodeURIComponent(orderId)}`); }
+  authorizeShopOrder(orderId, body) {
+    return this.request(`/api/shop/orders/${encodeURIComponent(orderId)}/authorizations`, { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  speedUpQueue(queueId, seconds, requestId) {
+    return this.request('/api/queue/speedup', { method: 'POST', body: JSON.stringify({ queueId, seconds, requestId }) });
+  }
+
+  getMonsters() { return this.request('/api/game/monsters'); }
+  getMonster(eventId) { return this.request(`/api/game/monsters/${encodeURIComponent(eventId)}`); }
+
   // ─── Build Queue API ───────────────────────────────────────────────────────
   
   // Get current build queue

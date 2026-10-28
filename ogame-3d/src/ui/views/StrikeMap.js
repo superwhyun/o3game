@@ -11,7 +11,7 @@ import { OrbitChart, relationOf } from './OrbitChart.js';
 import { FleetRoster } from './FleetRoster.js';
 import { bindSystemNav, clampCoords } from './systemNav.js';
 
-const MISSION_LABEL = { attack: '공격', transport: '수송', colonize: '식민지 개척' };
+const MISSION_LABEL = { attack: '공격', transport: '수송', colonize: '식민지 개척', recycle: '잔해 수거', monster: '괴수 공격' };
 const EDGE_SCROLL_ZONE = 72; // px from the scroller edge where dragging scrolls
 const EDGE_SCROLL_MAX = 18; // px per frame at the very edge
 
@@ -144,16 +144,31 @@ export class StrikeMap {
     return home.galaxy === this.coords?.galaxy && home.system === this.coords?.system && home.planet === slot;
   }
 
-  /** Same rule as the server: a planet must exist there and differ from the origin. */
+  /** Missions the selected formation could fly to this slot, mirroring the server rules. */
+  missionsFor(position) {
+    const ships = this.squad.formation?.ships || {};
+    const missions = [];
+    if (position.monster) missions.push('monster');
+    else if (!position.occupied) { if (ships.colonyShip > 0) missions.push('colonize'); }
+    else if (!this.isHomeSlot(position.position)) {
+      if (relationOf(position) === 'other') missions.push('attack');
+      missions.push('transport');
+    }
+    if (position.debris && ships.recycler > 0) missions.push('recycle');
+    return missions;
+  }
+
+  /** Same rule as the server: something must be there to act on, and it differs from the origin. */
   evaluateTarget(slot) {
     const position = this.positions.find((p) => p.position === slot);
     if (!position) return { valid: false, reason: '목표 없음' };
-    if (!position.occupied) return this.squad.formation?.ships?.colonyShip > 0
-      ? { valid: true, position, relation: 'empty', mission: 'colonize' }
-      : { valid: false, reason: '미점령 행성 — 식민선이 포함된 함대를 선택하십시오' };
+    const relation = position.monster ? 'monster' : relationOf(position);
+    const missions = this.missionsFor(position);
+    if (missions.length) return { valid: true, position, relation, mission: missions[0], missions };
+    if (position.monster) return { valid: false, reason: '괴수를 공격할 함대를 선택하십시오' };
+    if (!position.occupied) return { valid: false, reason: position.debris ? '잔해를 수거하려면 수확선이 포함된 함대를 선택하십시오' : '미점령 행성 — 식민선이 포함된 함대를 선택하십시오' };
     if (this.isHomeSlot(slot)) return { valid: false, reason: '출발지(본거지)입니다' };
-    const relation = relationOf(position);
-    return { valid: true, position, relation, mission: relation === 'other' ? 'attack' : 'transport' };
+    return { valid: false, reason: '목표 없음' };
   }
 
   eta(slot) {
@@ -303,7 +318,7 @@ export class StrikeMap {
     const cargo = Object.fromEntries([...this.confirmEl.querySelectorAll('[data-cargo]')].map(el=>[el.dataset.cargo,el.value]));
     const position = this.positions.find((p) => p.position === slot);
     const coordText = `[${this.coords.galaxy}:${this.coords.system}:${slot}]`;
-    const title = position?.planet ? escapeHtml(position.planet.name) : '미점령 행성';
+    const title = position?.monster ? escapeHtml(position.monster.name) : position?.planet ? escapeHtml(position.planet.name) : '미점령 행성';
     this.confirmEl.hidden = false;
 
     if (!verdict.valid) {
@@ -317,28 +332,40 @@ export class StrikeMap {
       return;
     }
 
-    const mission = verdict.relation === 'empty' ? 'colonize' : verdict.relation !== 'other' ? 'transport' : ['attack', 'transport'].includes(selectedMission) ? selectedMission : verdict.mission;
+    const mission = verdict.missions.includes(selectedMission) ? selectedMission : verdict.mission;
     const profile = this.squad.profile();
     const eta = this.eta(slot);
     const ready = profile.ships > 0 && !this.squad.isPending(this.squad.selectedId);
-    this.confirmArrow = ready ? { slot, label: `${MISSION_LABEL[mission]} · ${(position.planet?.name || '미점령 행성')}` } : null;
+    this.confirmArrow = ready ? { slot, label: `${MISSION_LABEL[mission]} · ${position.monster?.name || position.planet?.name || '미점령 행성'}` } : null;
     this.drawConfirmArrow();
 
+    const kicker = position.monster ? '괴수 출현 · 도착 시 위치를 다시 확인'
+      : verdict.relation === 'empty' ? '개척 가능 · 도착 시 점령 상태 재확인'
+      : verdict.relation === 'other' ? '타 제국' : '아군';
+    const monsterRows = position.monster ? `
+        <div class="spec-row"><dt>괴수 체력</dt><dd>${Number(position.monster.hpPercent).toFixed(1)}%</dd></div>
+        <div class="spec-row"><dt>CGC 보상 풀</dt><dd>${escapeHtml(position.monster.pool)} CGC</dd></div>
+        <div class="spec-row"><dt>내 기여</dt><dd>${formatAmount(position.monster.mine?.damage || 0)}</dd></div>` : '';
+    const debrisRows = position.debris ? `
+        <div class="spec-row"><dt>전투 잔해</dt><dd>금속 ${formatAmount(position.debris.metal)} · 수정 ${formatAmount(position.debris.crystal)}</dd></div>` : '';
     this.confirmEl.innerHTML = `
-      <p class="detail-kicker">${coordText} · ${verdict.relation === 'empty' ? '개척 가능 · 도착 시 점령 상태 재확인' : verdict.relation === 'other' ? '타 제국' : '아군'}</p>
+      <p class="detail-kicker">${coordText} · ${kicker}</p>
       <h4 class="slot-detail-title">${title}</h4>
       <dl class="spec-list single">
-        <div class="spec-row"><dt>사령관</dt><dd>${escapeHtml(position.planet?.username || '없음')}</dd></div>
+        ${position.planet ? `<div class="spec-row"><dt>사령관</dt><dd>${escapeHtml(position.planet.username || '없음')}</dd></div>` : ''}
+        ${monsterRows}${debrisRows}
         <div class="spec-row"><dt>${escapeHtml(this.squad.formation?.name || '함대')}</dt><dd>${ready ? `${formatAmount(profile.ships)}척 · 공격력 ${formatAmount(profile.attack)}` : '미편성'}</dd></div>
         <div class="spec-row"><dt>도착 예정</dt><dd>${eta ? formatDuration(eta) : '—'}</dd></div>
       </dl>
       <label class="field confirm-mission">임무
         <select name="mission">
-          ${Object.entries(MISSION_LABEL).filter(([value]) => verdict.relation === 'empty' ? value === 'colonize' : value !== 'colonize' && (verdict.relation === 'other' || value !== 'attack')).map(([value, label]) => `<option value="${value}" ${value === mission ? 'selected' : ''}>${label}</option>`).join('')}
+          ${verdict.missions.map((value) => `<option value="${value}" ${value === mission ? 'selected' : ''}>${MISSION_LABEL[value]}</option>`).join('')}
         </select>
       </label>
       ${mission === 'colonize' ? '<p class="detail-muted">도착 시 식민선 1척으로 개척합니다. 적재 자원과 나머지 함선은 새 식민지에 배치되며 함대는 그곳에 정착합니다. 정찰 보고서에서 지형과 사용 가능 면적을 먼저 확인할 수 있습니다.</p>' : ''}
-      <details class="combat-cargo"><summary>자원 적재</summary><div class="field-row cols-3">${[['metal','금속'],['crystal','수정'],['deuterium','중수소']].map(([id,label])=>`<label class="field">${label}<input type="number" data-cargo="${id}" min="0" step="1" value="${escapeHtml(cargo[id] || '0')}" inputmode="numeric"></label>`).join('')}</div></details>
+      ${mission === 'monster' ? '<p class="detail-muted">괴수는 정해진 시각에 다른 성계로 이동합니다. 도착했을 때 이미 떠났다면 전투 없이 귀환합니다. CGC 보상은 지갑을 연결한 상태에서 입힌 피해량에 비례합니다.</p>' : ''}
+      ${mission === 'recycle' ? '<p class="detail-muted">수확선만 잔해를 수거하며 먼저 도착한 함대가 먼저 가져갑니다. 적재량을 넘는 잔해는 남습니다.</p>' : ''}
+      ${['monster', 'recycle'].includes(mission) ? '' : `<details class="combat-cargo"><summary>자원 적재</summary><div class="field-row cols-3">${[['metal','금속'],['crystal','수정'],['deuterium','중수소']].map(([id,label])=>`<label class="field">${label}<input type="number" data-cargo="${id}" min="0" step="1" value="${escapeHtml(cargo[id] || '0')}" inputmode="numeric"></label>`).join('')}</div></details>`}
       <div class="confirm-actions">
         <button type="button" class="cmd-btn" data-confirm="cancel" ${this.launching?'disabled':''}>취소</button>
         <button type="button" class="cmd-btn primary" data-confirm="launch" ${ready && !this.launching ? '' : 'disabled'}>
@@ -353,14 +380,16 @@ export class StrikeMap {
     if (!verdict.valid || !formation || this.squad.profile().ships === 0 || this.launching || this.squad.isPending(formation.id)) return;
     const destination = { ...this.coords, planet: this.target };
     const mission = this.confirmEl.querySelector('[name="mission"]')?.value || verdict.mission;
-    const expectedTargetPlanetId = verdict.position.planet?.id || null;
+    const monster = mission === 'monster' ? verdict.position.monster : null;
+    const expectedTargetPlanetId = ['monster', 'recycle', 'colonize'].includes(mission) ? null : verdict.position.planet?.id || null;
     const cargo = Object.fromEntries([...this.confirmEl.querySelectorAll('[data-cargo]')].map(el=>[el.dataset.cargo,Number(el.value)]));
     this.launching = true;
     this.renderConfirm();
     try {
       await this.onLaunch({
-        mission, cargo, formationId: formation.id, expectedRevision: formation.revision,
-        originPlanetId: this.getHome().id, expectedTargetPlanetId, destination
+        // A monster fight is an attack on the event, not on a planet.
+        mission: monster ? 'attack' : mission, cargo, formationId: formation.id, expectedRevision: formation.revision,
+        originPlanetId: this.getHome().id, ...(monster ? { target: { type: 'monster', eventId: monster.eventId } } : { expectedTargetPlanetId }), destination
       });
       this.squad.render();
       this.closeConfirm();

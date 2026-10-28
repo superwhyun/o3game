@@ -57,7 +57,7 @@ export class OrbitChart {
       <header class="orbit-caption"><strong></strong><span></span></header>
       <svg class="orbit-svg" viewBox="0 0 ${VIEW.width} ${VIEW.height}" role="group" aria-label="${escapeHtml(label)}"></svg>
       <div class="orbit-legend" aria-hidden="true">
-        <span class="legend-own">아군</span><span class="legend-other">타 제국</span><span class="legend-empty">미점령 행성</span>
+        <span class="legend-own">아군</span><span class="legend-other">타 제국</span><span class="legend-empty">미점령 행성</span><span class="legend-monster">괴수</span><span class="legend-debris">잔해</span>
       </div>`;
     this.svg = container.querySelector('.orbit-svg');
     this.caption = container.querySelector('.orbit-caption');
@@ -174,7 +174,8 @@ export class OrbitChart {
     this.slotEls = [...this.svg.querySelectorAll('.slot')];
 
     this.caption.querySelector('strong').textContent = `星系 [${galaxy}:${system}]`;
-    this.caption.querySelector('span').textContent = `궤도 ${POSITION_COUNT} · 점유 ${this.positions.filter((p) => p.occupied).length}`;
+    this.caption.querySelector('span').textContent = `궤도 ${POSITION_COUNT} · 점유 ${this.positions.filter((p) => p.occupied).length}`
+      + (this.positions.some((p) => p.monster) ? ' · 괴수 출현' : '');
     this.setHighlight(this.highlight?.slot, this.highlight?.state);
     this.onRender?.();
     this.place(this.elapsed());
@@ -189,18 +190,28 @@ export class OrbitChart {
       ? `<text class="slot-label" y="${-radius - 12}">${escapeHtml(position.planet.name)}</text>
          <text class="slot-sublabel" y="${radius + 26}">${escapeHtml(position.planet.username)}</text>`
       : '';
+    const monster = position.monster
+      ? `<g class="slot-monster" aria-hidden="true"><circle r="${radius + 10}" class="monster-aura"/><path d="M-9 4c0-9 4-14 9-14s9 5 9 14l-4-3-2 4-3-4-3 4-2-4z" class="monster-body"/><circle cx="-3" cy="-3" r="1.6" class="monster-eye"/><circle cx="3" cy="-3" r="1.6" class="monster-eye"/></g>
+         <text class="slot-monster-label" y="${-radius - 26}">${escapeHtml(position.monster.name)} · ${Number(position.monster.hpPercent).toFixed(1)}%</text>`
+      : '';
+    const debris = position.debris
+      ? `<g class="slot-debris" aria-hidden="true" transform="translate(${radius + 12} ${-radius - 6})"><path d="M-6 0l3-5 5 2 4 4-3 5-6-1z" class="debris-shard"/><circle cx="5" cy="-5" r="1.8" class="debris-dot"/><circle cx="-8" cy="5" r="1.4" class="debris-dot"/></g>`
+      : '';
     const body = relation === 'empty'
       ? '<rect class="slot-marker" x="-5" y="-5" width="10" height="10" transform="rotate(45)"/>'
       : `<circle class="slot-planet planet-${relation}" r="${radius}"/>
          <circle class="slot-atmo" r="${radius + 3}"/>`;
-    const name = position.planet
+    const baseName = position.planet
       ? `${position.position}궤도 ${position.planet.name} (${position.planet.username})`
       : `${position.position}궤도 미점령 행성`;
+    const name = baseName
+      + (position.monster ? ` · 괴수 ${position.monster.name}` : '')
+      + (position.debris ? ` · 잔해 금속 ${position.debris.metal} 수정 ${position.debris.crystal}` : '');
     return `<g class="slot slot-${relation} ${position.position === this.selected ? 'is-selected' : ''}" data-slot="${position.position}"
         tabindex="0" role="button" aria-label="${escapeHtml(name)}">
         <circle class="slot-hit" r="${Math.max(radius + 12, 20)}"/>
         <circle class="slot-ring" r="${radius + 8}"/>
-        ${body}${label}
+        ${body}${label}${monster}${debris}
       </g>`;
   }
 

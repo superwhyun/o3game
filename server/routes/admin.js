@@ -238,6 +238,14 @@ router.put('/shop/disabled', superAdminMiddleware, async (req, res) => {
     res.status(error.statusCode || 500).json({ error: error.message, code: error.code });
   }
 });
+router.get('/shop', adminMiddleware, async (req, res) => {
+  try { res.json(await require('../services/ShopService').adminOverview()); }
+  catch (error) { res.status(500).json({ error: error.message }); }
+});
+router.put('/shop/speedup', superAdminMiddleware, async (req, res) => {
+  try { res.json(await require('../services/ShopService').setSpeedupTypes(req.user._id, req.body?.allowedTypes)); }
+  catch (error) { res.status(error.statusCode || 500).json({ error: error.message, code: error.code }); }
+});
 router.get('/shop/orders', adminMiddleware, async (req, res) => {
   try {
     const filter = req.query.status ? { status: String(req.query.status) } : {};

@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="/src/ui/galaxy.css">
   <link rel="stylesheet" href="/src/ui/strike.css">
   <link rel="stylesheet" href="/src/ui/fleet-command.css">
+  <link rel="stylesheet" href="/src/ui/market.css">
   <link rel="stylesheet" href="/src/ui/admin.css">
   <link rel="stylesheet" href="/src/ui/techtree.css">
 </head>
@@ -187,6 +188,10 @@
           <span class="label">성계도</span>
           <span class="shortcut">5</span>
         </button>
+        <button class="holo-btn" data-view="market">
+          <span class="label">상점</span>
+          <span class="shortcut">8</span>
+        </button>
         <button class="holo-btn admin-only hidden" data-view="admin" id="admin-btn">
           <span class="label">관리 본부</span>
           <span class="shortcut">◆</span>
@@ -318,7 +323,18 @@
       </section>
       <section class="holo-panel hidden" id="combat-panel" aria-labelledby="combat-title">
         <header class="panel-header"><div class="panel-title"><span class="panel-hanja">運用</span><h2 id="combat-title">함대운용</h2><span class="panel-sub">TACTICAL OPERATIONS</span></div><span class="panel-sub">편성한 함대를 목표 행성으로</span></header>
-        <div class="fleet-scroll"><section id="strike-map" aria-label="함대운용 지도"></section><div id="combat-missions"></div><details class="combat-secondary"><summary>좌표로 목표 지정</summary><form id="manual-combat-target"><label class="field">은하<input name="galaxy" type="number" min="1" max="9" value="1" required></label><label class="field">성계<input name="system" type="number" min="1" max="499" value="1" required></label><label class="field">행성<input name="planet" type="number" min="1" max="15" value="1" required></label><button class="cmd-btn" type="submit">목표 확인</button></form></details><details class="combat-secondary" id="scout-reports"><summary>정찰 보고 · 침입 탐지</summary><div id="scout-reports-content" class="scout-report-grid"></div></details><details class="combat-secondary" id="combat-reports"><summary>전투 보고</summary><div class="movement-log"></div></details></div>
+        <div class="fleet-scroll"><section id="monster-board" class="monster-board" aria-label="우주괴수" hidden></section><section id="strike-map" aria-label="함대운용 지도"></section><div id="combat-missions"></div><details class="combat-secondary"><summary>좌표로 목표 지정</summary><form id="manual-combat-target"><label class="field">은하<input name="galaxy" type="number" min="1" max="9" value="1" required></label><label class="field">성계<input name="system" type="number" min="1" max="499" value="1" required></label><label class="field">행성<input name="planet" type="number" min="1" max="15" value="1" required></label><button class="cmd-btn" type="submit">목표 확인</button></form></details><details class="combat-secondary" id="scout-reports"><summary>정찰 보고 · 침입 탐지</summary><div id="scout-reports-content" class="scout-report-grid"></div></details><details class="combat-secondary" id="combat-reports"><summary>전투 보고</summary><div class="movement-log"></div></details></div>
+      </section>
+
+      <section class="holo-panel hidden" id="market-panel" aria-labelledby="market-title">
+        <header class="panel-header">
+          <div class="panel-title">
+            <span class="panel-hanja">交易</span>
+            <h2 id="market-title">상점</h2>
+            <span class="panel-sub">CGC MARKET</span>
+          </div>
+        </header>
+        <div class="fleet-scroll"><div id="market-view"></div></div>
       </section>
 
       <!-- Admin Panel -->
@@ -349,6 +365,10 @@
           <button class="admin-tab" data-tab="settings">
             <span class="tab-icon">⚙️</span>
             <span class="tab-label">Game Settings</span>
+          </button>
+          <button class="admin-tab" data-tab="events">
+            <span class="tab-icon">🐉</span>
+            <span class="tab-label">Events &amp; Shop</span>
           </button>
           <button class="admin-tab" data-tab="techtree">
             <span class="tab-icon">🌀</span>
@@ -604,6 +624,10 @@
           <!-- ═══════════════════════════════════════════════════════════════ -->
           <!-- TAB 5: TECH TREE EDITOR -->
           <!-- ═══════════════════════════════════════════════════════════════ -->
+          <div class="admin-tab-content" id="tab-events">
+            <div id="admin-events-root" class="admin-events"></div>
+          </div>
+
           <div class="admin-tab-content" id="tab-techtree">
             <div class="tt-editor-container">
               <!-- Toolbar -->

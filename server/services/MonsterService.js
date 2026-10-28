@@ -402,9 +402,10 @@ async function detail(eventId, userId) {
 }
 
 /** Per-system view data for the galaxy map. */
-async function inSystem(galaxy, system) {
+async function inSystem(galaxy, system, userId = null) {
   const events = await MonsterEvent.find({ status: 'ACTIVE', 'location.galaxy': galaxy, 'location.system': system });
-  return events.map((event) => ({ planet: event.location.planet, ...publicView(event) }));
+  const mine = userId ? await MonsterContribution.find({ userId, eventId: { $in: events.map((e) => e._id) } }).lean() : [];
+  return events.map((event) => ({ planet: event.location.planet, ...publicView(event, mine.find((c) => String(c.eventId) === String(event._id))) }));
 }
 
 async function adminOverview() {

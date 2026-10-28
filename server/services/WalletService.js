@@ -64,9 +64,17 @@ function buildMessage({ address, chainId, nonce, issuedAt, expiresAt, requestId 
   ].join('\n');
 }
 
+/** Network the wallet must be on; the RPC URL lets a wallet add the chain when it does not know it. */
+async function network() {
+  if (!metanomic.isEnabled()) return null;
+  try { return { chainId: await resolveChainId(), name: process.env.WALLET_CHAIN_NAME || 'Ronin Saigon', rpcUrl: process.env.WALLET_RPC_URL || null }; }
+  catch { return null; }
+}
+
 async function status(userId) {
   const user = await User.findById(userId).select('wallet').lean();
   return {
+    network: await network(),
     enabled: metanomic.isEnabled(),
     linked: Boolean(user?.wallet?.address),
     address: user?.wallet?.address || null,

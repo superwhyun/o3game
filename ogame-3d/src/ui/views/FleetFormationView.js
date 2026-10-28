@@ -1,6 +1,7 @@
 import { catalog } from "../../data/catalog.js";
 import { isLaunchable } from "../../data/fleetMath.js";
 import { escapeHtml, formatAmount } from "../dom.js";
+import { EMBLEMS, emblemSvg, usableEmblems } from "../../data/emblems.js";
 import {
   profileOf,
   shipImages,
@@ -86,7 +87,7 @@ export class FleetFormationView {
     this.selectedId = id;
     const f = this.selected();
     this.draft = f
-      ? { name: f.name, ships: { ...f.ships }, revision: f.revision }
+      ? { name: f.name, ships: { ...f.ships }, revision: f.revision, emblem: f.emblem || "" }
       : null;
     this.dirty = false;
     this.error = "";
@@ -116,6 +117,14 @@ export class FleetFormationView {
       const id = button.dataset.formation;
       if (id === this.selectedId) return;
       if (this.guard(() => this.load(id))) this.load(id);
+      return;
+    }
+    if (button.dataset.emblem !== undefined) {
+      if (this.selected()?.status !== "ready" || this.busy) return;
+      this.draft.emblem = button.dataset.emblem;
+      this.dirty = true;
+      this.renderEditor();
+      this.renderFooter();
       return;
     }
     if (button.dataset.ship) {
@@ -231,6 +240,7 @@ export class FleetFormationView {
       await this.save(this.selectedId, {
         name: this.draft.name,
         ships: this.draft.ships,
+        emblem: this.draft.emblem,
         expectedRevision: this.draft.revision,
       });
       this.dirty = false;
@@ -250,6 +260,7 @@ export class FleetFormationView {
       state.fleetFormations,
       state.fleetMovements.map((m) => [m.id, m.status]),
       state.fleet,
+      state.entitlements?.emblems,
     ]);
     if (!force && signature === this.signature) return;
     this.signature = signature;
@@ -258,7 +269,7 @@ export class FleetFormationView {
         this.selectedId = state.fleetFormations[0]?.id || null;
       const f = this.selected();
       this.draft = f
-        ? { name: f.name, ships: { ...f.ships }, revision: f.revision }
+        ? { name: f.name, ships: { ...f.ships }, revision: f.revision, emblem: f.emblem || "" }
         : null;
     }
     this.list.innerHTML =
@@ -267,7 +278,7 @@ export class FleetFormationView {
         .map((f) => {
           const current = String(f.originPlanetId) === String(state.planet.id);
           const status = formationStatus(f, state);
-          return `<button type="button" class="formation-card ${this.selectedId === f.id ? "is-selected" : ""}" data-formation="${escapeHtml(f.id)}" aria-pressed="${this.selectedId === f.id}"><div class="formation-card-images">${shipImages(f.ships) || '<span class="empty-fleet-symbol">＋</span>'}</div><div class="formation-card-title"><strong>${escapeHtml(f.name)}</strong><span class="fleet-status ${status === "대기" ? "ready" : ""}">${status}</span></div><small>${formatAmount(profileOf(f.ships).ships)}척 · ${current ? "현재 행성" : escapeHtml(state.planets.find((p) => String(p._id) === String(f.originPlanetId))?.name || "다른 행성")}</small></button>`;
+          return `<button type="button" class="formation-card ${this.selectedId === f.id ? "is-selected" : ""}" data-formation="${escapeHtml(f.id)}" aria-pressed="${this.selectedId === f.id}"><div class="formation-card-images">${shipImages(f.ships) || '<span class="empty-fleet-symbol">＋</span>'}</div><div class="formation-card-title"><strong>${f.emblem ? emblemSvg(f.emblem, { size: 18 }) + " " : ""}${escapeHtml(f.name)}</strong><span class="fleet-status ${status === "대기" ? "ready" : ""}">${status}</span></div><small>${formatAmount(profileOf(f.ships).ships)}척 · ${current ? "현재 행성" : escapeHtml(state.planets.find((p) => String(p._id) === String(f.originPlanetId))?.name || "다른 행성")}</small></button>`;
         })
         .join("");
     fillThumbnails(this.list);
@@ -299,6 +310,7 @@ export class FleetFormationView {
     this.editor.innerHTML = `<div class="formation-stage"><div class="stage-grid" aria-hidden="true"></div><div class="formation-stage-images">${shipImages(ships, 5) || '<span class="stage-empty">함선 카드를 선택해 배정하십시오</span>'}</div><div class="formation-stage-heading"><p class="fleet-eyebrow">${escapeHtml(formationStatus(f, this.getState()))} · ${escapeHtml(this.getState().planets.find((p) => String(p._id) === String(f.originPlanetId))?.name || "")}</p><label>함대 이름<input data-name maxlength="40" value="${escapeHtml(this.draft.name)}" ${locked ? "disabled" : ""}></label><p>${formatAmount(profile.ships)}<small> 척의 함선</small></p></div></div>
       <div class="formation-specs"><span>공격력 <strong>${formatAmount(profile.attack)}</strong></span><span>적재량 <strong>${formatAmount(profile.cargoCapacity)}</strong></span><span>속도 <strong>${formatAmount(profile.slowestSpeed)}</strong></span></div>
       ${f.notice ? `<p class="fleet-notice">${escapeHtml(f.notice)}</p>` : ""}
+      ${this.emblemPickerHtml(locked)}
       ${
         locked
           ? '<p class="fleet-notice">임무 중인 함대는 귀환 후 편집할 수 있습니다.</p>'
@@ -316,6 +328,15 @@ export class FleetFormationView {
       <div class="formation-footer"></div>`;
     fillThumbnails(this.editor);
     this.renderFooter();
+  }
+  /** Emblem choices: none, the free ones and any bought in the shop. */
+  emblemPickerHtml(locked) {
+    const owned = this.getState().entitlements?.emblems || [];
+    const current = this.draft?.emblem || "";
+    const options = usableEmblems(owned);
+    const buttons = ['<button type="button" class="emblem-option" data-emblem="" aria-pressed="' + (current === "") + '" ' + (locked ? "disabled" : "") + ' title="문장 없음">없음</button>']
+      .concat(options.map((id) => `<button type="button" class="emblem-option" data-emblem="${escapeHtml(id)}" aria-pressed="${current === id}" ${locked ? "disabled" : ""} title="${escapeHtml(EMBLEMS[id].name)}">${emblemSvg(id, { size: 26, label: false })}<span class="sr-only">${escapeHtml(EMBLEMS[id].name)}</span></button>`));
+    return `<div class="ship-picker-heading"><h4>함대 문장</h4><span>상점에서 더 얻을 수 있습니다</span></div><div class="emblem-picker" role="group" aria-label="함대 문장">${buttons.join("")}</div>`;
   }
   renderFooter() {
     this.message.textContent = this.error || "";

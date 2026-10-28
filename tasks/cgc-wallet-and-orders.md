@@ -2,7 +2,7 @@
 
 ## 목표와 범위
 
-Metanomic(공통 코인 CGC 정산 서비스)과 연동하는 이 게임의 공통 기반을 만든다. 이 문서는 지갑 연결, 서버 API 클라이언트, CGC 보상 지급 outbox, CGC 결제 주문(함대 문장·시간 가속)을 다룬다. 자원 교환은 `cgc-resource-exchange.md`, 우주괴수 이벤트는 `space-monster-events.md`가 이 기반 위에서 구현된다.
+Metanomic(공통 코인 CGC 정산 서비스)과 연동하는 이 게임의 공통 기반을 만든다. 이 문서는 지갑 연결, 서버 API 클라이언트, CGC 보상 지급 outbox, CGC 결제 주문(함대 문장·시간 가속)을 다룬다. 우주괴수 이벤트(`space-monster-events.md`)가 이 기반 위에서 구현되며, CGC를 버는 경로는 이 이벤트의 보상이다. 자원을 CGC로 바꾸는 교환은 지원하지 않는다.
 
 완료 조건: 이용자가 PC에서 Ronin 지갑을 계정에 한 번 연결하고, CGC로 상품을 구매해 정확히 한 번 지급받는다. 서버가 중간에 중단돼도 재시작 후 중복 지급이나 미지급 없이 완료된다. 모바일은 지갑 UI 없이 기존 아이디/비밀번호로 플레이하고, 이미 연결된 계정의 보상 수령은 동작한다.
 
@@ -10,17 +10,17 @@ Metanomic(공통 코인 CGC 정산 서비스)과 연동하는 이 게임의 공�
 
 | 항목 | 결정 |
 |:--|:--|
-| 현금 결제 | 없음. CGC는 다른 게임에서 벌고 이 게임에서도 번다 |
+| 현금 결제 | 없음. CGC는 다른 게임에서 벌고, 이 게임에서는 괴수 이벤트 보상으로 번다 |
+| CGC 사용처 | 게임 내 기능(시간 가속)과 외형(함대 문장)만. 자원·함선·방어시설 판매와 자원 → CGC 교환은 지원하지 않는다 |
 | 계정 모델 | 기존 아이디/비밀번호 계정에 지갑을 연결한다. 지갑 1개 ↔ 계정 1개. 이용자 해제 불가. 멀티 계정은 범위 밖 |
 | 지갑 | Ronin Wallet(확장 프로그램)만 지원. 모바일은 게임 플레이 전용, WalletConnect는 범위 밖 |
 | 정산 속도 | Metanomic 운영자 화면의 게임별 확인 블록 수. 1이면 블록 포함 즉시 반영. 값은 운영자가 정한다 |
 | 재구성 | 감수한다. 감지·복구 로직을 만들지 않고 경보 로그만 남긴다 |
 | 1차 상품 | 함대 문장, 시간(가속) |
-| 교환 안전장치 | 없음(`cgc-resource-exchange.md` 참고) |
 
 ## 미정 항목
 
-- **가속의 허용 대상과 한도.** "천천히 이동"이라는 답을 가속 한도에 대한 것으로 확정하지 못했다. 이 설계는 한도를 `GameConfig`에서 어드민이 조정하게 만들고, 기본값은 건설·연구만 허용하며 일 한도는 없음이다. 값을 정하면 코드 변경 없이 반영된다.
+- **가속의 허용 대상과 한도.** 아직 답이 없다(이전의 "천천히 이동"은 괴수 이동에 대한 답으로 확인됨). 이 설계는 한도를 `GameConfig`에서 어드민이 조정하게 만들고, 기본값은 건설·연구만 허용하며 일 한도는 없음이다. 값을 정하면 코드 변경 없이 반영된다.
 
 ## 외부 전제(코드 밖 작업)
 
@@ -28,7 +28,7 @@ Metanomic(공통 코인 CGC 정산 서비스)과 연동하는 이 게임의 공�
 
 1. 운영자 신청과 승인, 게임 등록과 승인(게임 ID 발급).
 2. 게임 API 키 발급(범위: `rewards`, `payments`, `events`, `budget`).
-3. 게임 예산 확보(관리자 배분 또는 운영자 예치). 신규 게임 예산은 0이다.
+3. 게임 예산 확보(관리자 배분 또는 운영자 예치). 신규 게임 예산은 0이다. 이후에는 상점 판매 수입도 같은 예산에 쌓이고, 괴수 보상이 이 예산에서 나간다.
 4. 게임 정산 속도 설정(`PUT /v1/games/{gameId}/settlement`, 포털 화면 포함).
 
 서버 환경 변수:
@@ -41,7 +41,7 @@ METANOMIC_GAME_KEY=<게임 API 키>
 METANOMIC_ASSET_ID=common-game-credit
 ```
 
-`METANOMIC_ENABLED`가 꺼져 있으면 지갑·상점·교환·괴수 보상 API는 `503 CGC_DISABLED`를 반환하고 나머지 게임은 영향받지 않는다. API 키는 서버 환경 변수에만 두며 클라이언트 번들·응답·로그에 넣지 않는다.
+`METANOMIC_ENABLED`가 꺼져 있으면 지갑·상점·괴수 보상 API는 `503 CGC_DISABLED`를 반환하고 나머지 게임은 영향받지 않는다. API 키는 서버 환경 변수에만 두며 클라이언트 번들·응답·로그에 넣지 않는다.
 
 ## 설계와 주요 결정
 
@@ -69,14 +69,14 @@ CGC는 소수점 6자리다. 서버 내부는 정수 마이크로 단위(`BigInt
 - 타임아웃·503·통신 실패는 "결과 불명"이다. 새 주문 ID나 새 보상 참조를 만들지 않고 저장된 본문과 키로 재시도한다.
 - 모든 호출 본문은 네트워크 호출 전에 DB에 저장한다(재시도에 그대로 사용).
 
-### 보상 outbox (교환·괴수 보상 공용)
+### 보상 outbox (괴수 보상)
 
-새 컬렉션 `CgcReward`: `rewardRef`(고유), `kind`(`exchange`|`monster`), `refId`, `userId`, `wallet`(스냅샷), `amountMicro`, `status`(`PENDING` → `SUBMITTED` → `COMPLETED` / `FAILED`), `rewardId`, `operationId`, `attempts`, `lastError`, 타임스탬프.
+새 컬렉션 `CgcReward`: `rewardRef`(고유), `kind`(현재 `monster`, 다른 보상 종류를 추가할 수 있게 열어 둠), `refId`, `userId`, `wallet`(스냅샷), `amountMicro`, `status`(`PENDING` → `SUBMITTED` → `COMPLETED` / `FAILED`), `rewardId`, `operationId`, `attempts`, `lastError`, 타임스탬프.
 
-- 업무 트랜잭션이 `CgcReward`를 `PENDING`으로 함께 기록한다(교환이면 자원 차감과 같은 트랜잭션).
+- 업무 트랜잭션이 `CgcReward`를 `PENDING`으로 함께 기록한다(괴수 정산이면 기여도 확정과 같은 트랜잭션).
 - 폴러가 `PENDING`을 가져와 `POST /games/{id}/rewards`를 호출한다. `Idempotency-Key`와 `rewardRef`는 같은 값이다. 응답이 유실되면 `GET /rewards?rewardRef=`로 복구한다.
 - `SUBMITTED`는 `GET /operations/{id}`가 `FINALIZED`면 `COMPLETED`, `FAILED`면 `FAILED`로 바꾼다.
-- 확정 실패(`BUDGET_EXCEEDED` 포함)는 `kind`별 콜백을 호출한다. 교환은 자원을 환원하고, 괴수 보상은 `FAILED`로 남겨 어드민이 재시도한다. 일시 오류는 지수 백오프로 재시도한다.
+- `BUDGET_EXCEEDED`는 확정 실패가 아니라 대기 사유다. `PENDING`으로 두고 재시도 간격을 늘리며 예산이 확보되면 이어서 지급한다. 그 밖의 확정 실패는 `FAILED`로 남겨 어드민이 재시도한다. 일시 오류는 지수 백오프로 재시도한다.
 
 ### 폴러와 단일 실행 보장
 

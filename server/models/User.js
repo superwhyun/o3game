@@ -71,6 +71,12 @@ const userSchema = new mongoose.Schema({
   stateRevision: { type: Number, default: 0 },
   currentPlanet: { type: Number, default: 0 },
   terraformingLevel: { type: Number, default: 0, min: 0, max: 30 },
+
+  // Linked CGC wallet (lowercase 0x address). One wallet per account, never changed by the player.
+  wallet: {
+    address: { type: String, lowercase: true, trim: true },
+    linkedAt: { type: Date }
+  },
   
   // Game Stats
   rank: { type: Number, default: 0 },
@@ -94,6 +100,11 @@ const userSchema = new mongoose.Schema({
 userSchema.index(
   { [COORDINATE_KEY_PATH]: 1 },
   { unique: true, partialFilterExpression: { [COORDINATE_KEY_PATH]: { $exists: true } } }
+);
+
+userSchema.index(
+  { 'wallet.address': 1 },
+  { unique: true, partialFilterExpression: { 'wallet.address': { $type: 'string' } } }
 );
 
 function syncPlanetCoordinate(planet) {

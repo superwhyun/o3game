@@ -55,6 +55,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/queue', require('./routes/buildingQueue'));
 app.use('/api/game', require('./routes/game'));
+app.use('/api/wallet', require('./routes/wallet'));
 
 // Make io accessible in routes
 app.set('io', io);

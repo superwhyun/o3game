@@ -221,6 +221,15 @@ router.delete('/users/:userId', superAdminMiddleware, async (req, res) => {
   }
 });
 
+// Remove a mistakenly linked wallet (players cannot unlink on their own)
+router.delete('/users/:userId/wallet', superAdminMiddleware, async (req, res) => {
+  try {
+    res.json(await require('../services/WalletService').adminUnlink(req.user._id, req.params.userId));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message, code: error.code });
+  }
+});
+
 // Maintenance mode toggle
 router.post('/maintenance', superAdminMiddleware, async (req, res) => {
   try {

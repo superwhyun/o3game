@@ -12,7 +12,7 @@ const hash = (value) => createHash('sha256').update(JSON.stringify(value)).diges
 
 async function startFakeMetanomic({ gameId = 'game-fake', gameKey = 'fake-key', budgetMicro = 0n, autoFinalize = false } = {}) {
   const state = {
-    gameId, gameKey, budget: BigInt(budgetMicro), reserved: 0n, incoming: 0n,
+    gameId, gameKey, chainId: 202601, budget: BigInt(budgetMicro), reserved: 0n, incoming: 0n,
     rewards: new Map(), payments: new Map(), operations: new Map(), events: [], idempotency: new Map(),
     balances: new Map(), requests: [], autoFinalize,
     failures: [], lostResponses: []
@@ -63,7 +63,7 @@ async function startFakeMetanomic({ gameId = 'game-fake', gameKey = 'fake-key', 
     const path = url.pathname.replace(/^\/v1/, '');
     const method = req.method;
     let m;
-    if (method === 'GET' && path === '/assets') return [200, { assetId: 'common-game-credit' }];
+    if (method === 'GET' && path === '/assets') return [200, { assets: [{ assetId: 'common-game-credit', decimals: 6, activeDeploymentId: 'fake-deployment', deployments: [{ id: 'fake-deployment', chainId: state.chainId }] }] }];
     if (!/^Bearer (.+)$/.test(req.headers.authorization || '') || req.headers.authorization !== `Bearer ${gameKey}`) fail(401, 'UNAUTHENTICATED');
 
     if (method === 'GET' && (m = path.match(/^\/operations\/([^/]+)$/))) {

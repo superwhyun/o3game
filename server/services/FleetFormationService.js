@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const entities = require("./EntityConfigService");
 const { atomic, requireTransactions } = require("./transactions");
+const { canUseEmblem } = require("../data/shop/emblems");
 const {
   sameId,
   availableShips,
@@ -49,6 +50,12 @@ async function change(userId, action, id, input = {}) {
         availableShips(user, formation.originPlanetId, id),
         (shipId) => entities.getEntity("ship", shipId)?.stats,
       );
+      if (input.emblem !== undefined) {
+        const emblem = typeof input.emblem === "string" ? input.emblem : null;
+        if (emblem === null || !canUseEmblem(emblem, user.entitlements?.emblems))
+          fail("사용할 수 없는 문장입니다.", 400, "EMBLEM_NOT_OWNED");
+        formation.emblem = emblem;
+      }
       formation.name = name;
       formation.revision += 1;
       formation.notice = "";

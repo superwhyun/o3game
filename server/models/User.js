@@ -52,6 +52,7 @@ const planetSchema = new mongoose.Schema({
 const formationSchema = new mongoose.Schema({
   number: { type: Number, required: true },
   name: { type: String, required: true },
+  emblem: { type: String, default: '' },
   originPlanetId: { type: mongoose.Schema.Types.ObjectId, required: true },
   ships: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   status: { type: String, enum: ['ready', 'onMission'], default: 'ready' },

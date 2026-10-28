@@ -17,6 +17,7 @@ const fleetMovementSchema = new mongoose.Schema({
   initialFleet: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   formationId: { type: mongoose.Schema.Types.ObjectId, default: null },
   formationNameAtLaunch: { type: String, default: '' },
+  formationEmblemAtLaunch: { type: String, default: '' },
   formationRevisionAtLaunch: Number,
   originPlanetId: mongoose.Schema.Types.ObjectId,
   targetPlanetId: mongoose.Schema.Types.ObjectId,

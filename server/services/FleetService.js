@@ -153,6 +153,7 @@ async function launch(userId, input) {
         targetUserId: target?._id,
         formationId: formation._id,
         formationNameAtLaunch: formation.name,
+        formationEmblemAtLaunch: formation.emblem || "",
         formationRevisionAtLaunch: formation.revision,
         originPlanetId: planet._id,
         targetPlanetId: targetPlanet?._id,

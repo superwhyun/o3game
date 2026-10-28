@@ -56,6 +56,7 @@ function formatFleetMovement(movement, now = new Date()) {
     requestId: movement.requestId,
     scoutReportId: movement.scoutReportId,
     formationName: movement.formationNameAtLaunch || '기존 임무',
+    formationEmblem: movement.formationEmblemAtLaunch || '',
     initialFleet: movement.initialFleet,
     notice: movement.notice,
     mission: movement.mission,

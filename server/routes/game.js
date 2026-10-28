@@ -82,11 +82,13 @@ router.get('/galaxy', authMiddleware, async (req, res) => {
       'planets.system': system
     }).select('_id username isOnline planets').lean();
 
+    const debris = await require('../services/DebrisService').inSystem(galaxy, system);
     const { conflicts, ...view } = buildGalaxySystem({
       galaxy,
       system,
       requestingUserId: req.user._id,
-      users
+      users,
+      debris
     });
     if (conflicts.length > 0) {
       console.warn(`[galaxy] ${conflicts.length} duplicate planet slot(s) in [${galaxy}:${system}] — run "npm run migrate:planets"`, conflicts);

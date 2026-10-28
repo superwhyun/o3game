@@ -168,7 +168,7 @@ class CombatService {
         totalDefenderLosses[type] = totalInitialDefender[type] - (finalDefender[type] || 0);
     }
 
-    const debrisField = this.calculateDebris(totalAttackerLosses, totalDefenderLosses, config.combatSettings?.debrisFieldPercentage || 30);
+    const debrisField = this.calculateDebris(totalAttackerLosses, totalDefenderLosses, config.combatSettings?.debrisFieldPercentage ?? 30, { includeDefense: Boolean(config.combatSettings?.defenseToDebris) });
     const winner = this.determineWinner8Wave(finalAttacker, finalDefender, totalInitialAttacker);
 
     return {
@@ -253,6 +253,8 @@ class CombatService {
       if (defenderTypes.length === 0) break;
       
       for (const shot of shots) {
+        // The last defender can fall mid-volley; remaining shots have nothing to hit.
+        if (defenderTypes.length === 0) break;
         const targetType = defenderTypes[Math.floor(this.random() * defenderTypes.length)];
         const target = remaining[targetType];
         
@@ -303,14 +305,24 @@ class CombatService {
     return 'attacker';
   }
 
-  calculateDebris(attackerLosses, defenderLosses, debrisFieldPercentage = 30) {
-    const debrisRatio = debrisFieldPercentage / 100;
-    const metal = Math.floor((this.calculateResourceValue(attackerLosses) + 
-                              this.calculateResourceValue(defenderLosses)) * debrisRatio);
-    return {
-      metal: Math.floor(metal * 0.7),
-      crystal: Math.floor(metal * 0.3)
-    };
+  /**
+   * Wreckage left by a battle: a share of the metal and crystal cost of every destroyed
+   * ship on both sides. Defense installations only count when defenseToDebris is on.
+   */
+  calculateDebris(attackerLosses, defenderLosses, debrisFieldPercentage = 30, { includeDefense = false } = {}) {
+    const ratio = Math.max(0, debrisFieldPercentage) / 100;
+    const total = { metal: 0, crystal: 0 };
+    for (const losses of [attackerLosses, defenderLosses]) {
+      for (const [type, count] of Object.entries(losses || {})) {
+        const ship = entityConfigService.getEntity('ship', type);
+        const definition = ship || (includeDefense ? entityConfigService.getEntity('defense', type) : null);
+        const cost = definition?.costModel?.baseCost;
+        if (!cost || !(count > 0)) continue;
+        total.metal += (cost.metal || 0) * count;
+        total.crystal += (cost.crystal || 0) * count;
+      }
+    }
+    return { metal: Math.floor(total.metal * ratio), crystal: Math.floor(total.crystal * ratio) };
   }
   
   calculateResourceValue(losses) {

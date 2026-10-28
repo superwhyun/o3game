@@ -260,7 +260,7 @@ class SocketHandlers {
         { status: 'flying', arrivalTime: { $lte: now } },
         { status: 'returning', returnTime: { $lte: now } },
         { status: 'returning', mission: 'colonize', notice: /^식민지 개척 완료/ }
-      ] }).select('_id');
+      ] }).select('_id').sort({ arrivalTime: 1, returnTime: 1, _id: 1 });
       for (const movement of movements) {
         try {
           const users = await require('../services/FleetService').processMovement(movement._id, now);

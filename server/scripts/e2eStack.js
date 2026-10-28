@@ -38,6 +38,8 @@ async function main() {
   const User = require('../models/User'), Movement = require('../models/FleetMovement'), Config = require('../models/GameConfig');
   const MonsterEvent = require('../models/MonsterEvent'), Debris = require('../models/DebrisField');
   await Config.getConfig();
+  // Prices are normally set by an administrator; the stack seeds the ones the browser scenarios buy.
+  await Config.updateOne({}, { $set: { 'shop.prices': { 'emblem.dragon': '5000000', 'emblem.comet': '4000000', 'speedup.1h': '500000', 'speedup.6h': '2500000', 'speedup.24h': '8000000' } } });
   const sign = (user) => jwt.sign({ userId: String(user._id) }, process.env.JWT_SECRET, { expiresIn: '4h' });
   const make = async (username, planet, extra = {}) => {
     const user = await User.create({

@@ -438,7 +438,10 @@ async function simulate(input) {
   const lossValue = Combat.calculateResourceValue(result.attackerLosses || {});
   return {
     damage: Math.floor(result.defenderHullDamage || 0), remainingPercent: rules.hpPercent(snapshot, after), defeated: rules.remainingCount(after) === 0,
-    attackerLosses: result.attackerLosses, attackerLossValue: lossValue, maxHull: rules.maxHull(snapshot)
+    attackerLosses: result.attackerLosses, attackerLossValue: lossValue, maxHull: rules.maxHull(snapshot),
+    // Expected monster shots per volley (rapid fire counted) and the damage they carry before shields.
+    monsterShots: snapshot.units.reduce((sum, unit) => sum + unit.count * (1 + Object.values(unit.stats.rapidFire).reduce((a, b) => a + b, 0)), 0),
+    monsterVolleyPower: snapshot.units.reduce((sum, unit) => sum + unit.count * (1 + Object.values(unit.stats.rapidFire).reduce((a, b) => a + b, 0)) * unit.stats.attack, 0)
   };
 }
 

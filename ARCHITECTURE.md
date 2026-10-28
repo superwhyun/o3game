@@ -125,6 +125,10 @@ OOgame/
 ### 4.6 관리자 기능
 - `adminService.js`와 `UIManager.js`의 Admin 탭 로직을 통해 전체 서버 속도 조절, 자원 지급, 사용자 관리 기능을 확장할 수 있습니다.
 
+### 4.7 CGC 과금·괴수 이벤트·전투 잔해
+- 지갑 연결, 상점(시간 가속·함대 문장), 괴수 이벤트, 전투 잔해는 `docs/cgc-development.md`와 `tasks/cgc-wallet-and-orders.md`, `tasks/space-monster-events.md`, `tasks/debris-fields.md`를 참고한다.
+- 상품 가격은 관리자가 정한다. 코드의 상품 목록(`server/data/shop/products.js`)에는 가격이 없다.
+
 ---
 
 ## 5. 주요 설정 파일

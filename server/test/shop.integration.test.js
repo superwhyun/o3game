@@ -23,6 +23,8 @@ async function harness() {
   const User = require('../models/User'), Order = require('../models/CgcOrder'), Config = require('../models/GameConfig');
   const shop = require('../services/ShopService');
   await User.init(); await Order.init(); await Config.getConfig();
+  const boss = await User.create({ username: 'pricer', email: 'pricer@test.invalid', password: randomUUID(), planets: [{ galaxy: 9, system: 9, planet: 1 }] });
+  await shop.setPrices(boss._id, { 'emblem.crescent': '3', 'emblem.laurel': '3', 'emblem.comet': '4', 'emblem.dragon': '5', 'emblem.anchor': '4', 'emblem.skull': '5', 'speedup.1h': '0.5', 'speedup.6h': '2.5', 'speedup.24h': '8' });
   let slot = 0;
   const makeUser = (name, wallet = WALLET) => User.create({ username: name, email: `${name}@test.invalid`, password: randomUUID(), ...(wallet ? { wallet: { address: wallet, linkedAt: new Date() } } : {}), planets: [{ galaxy: 1, system: 1, planet: ++slot }] });
   const app = express(); app.use(express.json()); app.use('/api/shop', require('../routes/shop'));
@@ -211,6 +213,27 @@ test('a purchase that can no longer be delivered is refunded before the delivery
     payment.status = 'EXPIRED';
     await h.pass();
     assert.equal((await h.orderOf(expiring.orderId)).status, 'EXPIRED');
+  } finally { await h.close(); }
+});
+
+test('prices come only from the administrator: unpriced products cannot be bought, changes are audited', { timeout: 120000 }, async () => {
+  const h = await harness();
+  try {
+    const user = await h.makeUser('pricebuyer');
+    const boss = await h.User.findOne({ username: 'pricer' });
+    await h.shop.setPrices(boss._id, { 'speedup.1h': null });
+    assert.equal((await h.buy(user, 'speedup.1h')).body.code, 'PRODUCT_DISABLED');
+    const listed = (await h.call(user, 'GET', '/catalog')).body.products.find((p) => p.id === 'speedup.1h');
+    assert.equal(listed.available, false);
+    await assert.rejects(h.shop.setPrices(boss._id, { 'speedup.1h': '-1' }), (e) => e.code === 'INVALID_PRICE');
+    await assert.rejects(h.shop.setPrices(boss._id, { 'speedup.1h': '0' }), (e) => e.code === 'INVALID_PRICE');
+    await assert.rejects(h.shop.setPrices(boss._id, { 'nope.x': '1' }), (e) => e.code === 'UNKNOWN_PRODUCT');
+    await h.shop.setPrices(boss._id, { 'speedup.1h': '1.25' });
+    const order = (await h.buy(user, 'speedup.1h', 2)).body.order;
+    assert.equal(order.totalMicro, '2500000');
+    await h.shop.setPrices(boss._id, { 'speedup.1h': '9' }); // later price changes never touch an existing order
+    assert.equal((await h.orderOf(order.orderId)).totalMicro, '2500000');
+    assert.ok(await mongoose.model('AuditLog').countDocuments({ action: 'shop.prices' }) >= 3);
   } finally { await h.close(); }
 });
 

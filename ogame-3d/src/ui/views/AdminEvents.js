@@ -3,6 +3,7 @@
  * simulator for tuning difficulty, and the CGC shop switches.
  */
 import { escapeHtml, formatAmount } from '../dom.js';
+import { monsterThumbnail } from '../../three/monsters/MonsterModel.js';
 
 const STATUS_LABEL = { SCHEDULED: '예정', ACTIVE: '진행 중', DEFEATED: '처치됨', SETTLING: '정산 중', SETTLED: '정산 완료', EXPIRED: '기간 만료', CANCELLED: '취소됨' };
 const CLASSES = ['HEAVY', 'SWARM', 'SPLASH', 'CIVIL'];
@@ -40,6 +41,7 @@ export class AdminEvents {
     this.editing = null;
     this.simulation = null;
     root.addEventListener('click', (event) => this.onClick(event));
+    root.addEventListener('input', (event) => { if (event.target.name?.startsWith('model')) { clearTimeout(this.previewTimer); this.previewTimer = setTimeout(() => this.refreshPreview(), 250); } });
     root.addEventListener('submit', (event) => { event.preventDefault(); void this.onSubmit(event.target); });
   }
 
@@ -62,6 +64,7 @@ export class AdminEvents {
       ${this.editing ? `<div class="holo-card admin-card">${this.editorHtml()}</div>` : ''}
       <div class="holo-card admin-card"><div class="card-header"><h3>전투 시뮬레이터</h3></div>${this.simulatorHtml()}</div>
       <div class="holo-card admin-card"><div class="card-header"><h3>CGC 상점</h3></div>${this.shopHtml()}</div>`;
+    if (this.editing) this.refreshPreview();
   }
 
   // ───── events ─────
@@ -112,6 +115,17 @@ export class AdminEvents {
         <label>장갑 기술${num('armor', t.techs.armor, 'min="0" max="100"')}</label>
         <label>시간당 재생(%)<input type="number" name="regenPerHour" value="${t.regenPerHour}" min="0" max="100" step="0.1" required></label>
         <label>기본 보상 풀(CGC)<input name="defaultPool" value="${escapeHtml(microToCgc(t.defaultPoolMicro))}" required inputmode="decimal"></label>
+        <fieldset class="admin-model"><legend>3D 외형</legend>
+          <div class="admin-model-fields">
+            <label>형태<select name="modelBody">${[['orb', '구체'], ['worm', '벌레'], ['crab', '게'], ['manta', '가오리']].map(([id, label]) => `<option value="${id}" ${(t.model?.body || 'orb') === id ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+            <label>색상<input type="color" name="modelColor" value="${escapeHtml(t.model?.color || '#7a3f9d')}"></label>
+            <label>눈<input type="number" name="modelEyes" value="${t.model?.eyes ?? 3}" min="0" max="8"></label>
+            <label>가시<input type="number" name="modelSpikes" value="${t.model?.spikes ?? 6}" min="0" max="16"></label>
+            <label>촉수<input type="number" name="modelTentacles" value="${t.model?.tentacles ?? 4}" min="0" max="10"></label>
+            <label>무늬 시드<input type="number" name="modelSeed" value="${t.model?.seed ?? 1}" min="0" max="9999"></label>
+          </div>
+          <img class="admin-model-preview" alt="괴수 외형 미리보기" width="224" height="144" hidden>
+        </fieldset>
         <fieldset class="admin-units"><legend>유닛 (총 2000기까지)</legend>${t.units.map((u, i) => this.unitRow(u, i)).join('')}
           <button type="button" class="cmd-btn" data-add-unit>유닛 추가</button></fieldset>
         <div class="admin-row-actions"><button type="submit" class="cmd-btn primary">저장</button><button type="button" class="cmd-btn" data-cancel-edit>닫기</button></div>
@@ -143,7 +157,7 @@ export class AdminEvents {
         <label>방어막 기술<input type="number" name="shieldTech" value="0" min="0" max="100"></label>
         <label>장갑 기술<input type="number" name="armorTech" value="0" min="0" max="100"></label>
         <button type="submit" class="cmd-btn primary">시뮬레이션</button></form>
-      ${result ? `<dl class="admin-sim"><div><dt>입힌 피해</dt><dd>${formatAmount(result.damage)} / ${formatAmount(result.maxHull)}</dd></div><div><dt>남은 체력</dt><dd>${Number(result.remainingPercent).toFixed(1)}%</dd></div><div><dt>처치 여부</dt><dd>${result.defeated ? '처치' : '생존'}</dd></div><div><dt>함대 손실 가치</dt><dd>${formatAmount(result.attackerLossValue)}</dd></div></dl><p class="admin-muted">1회 전투 결과입니다. 처치까지 필요한 전투 횟수 ≈ ${result.damage > 0 ? Math.ceil(result.maxHull / result.damage) : '∞'}회</p>` : ''}`;
+      ${result ? `<dl class="admin-sim"><div><dt>입힌 피해</dt><dd>${formatAmount(result.damage)} / ${formatAmount(result.maxHull)}</dd></div><div><dt>남은 체력</dt><dd>${Number(result.remainingPercent).toFixed(1)}%</dd></div><div><dt>처치 여부</dt><dd>${result.defeated ? '처치' : '생존'}</dd></div><div><dt>함대 손실 가치</dt><dd>${formatAmount(result.attackerLossValue)}</dd></div><div><dt>괴수 평균 발수/웨이브</dt><dd>${formatAmount(result.monsterShots)}</dd></div><div><dt>괴수 총 공격력(방어막 전)</dt><dd>${formatAmount(result.monsterVolleyPower)}</dd></div></dl><p class="admin-muted">1회 전투 결과입니다. 처치까지 필요한 전투 횟수 ≈ ${result.damage > 0 ? Math.ceil(result.maxHull / result.damage) : '∞'}회</p>` : ''}`;
   }
 
   // ───── shop ─────
@@ -152,7 +166,8 @@ export class AdminEvents {
     const types = [['building', '건설'], ['research', '연구'], ['ship', '함선 생산']];
     return `<p class="admin-muted">CGC 연동: <b>${this.shop.enabled ? '켜짐' : '꺼짐'}</b></p>
       <form class="admin-form" data-form="shop">
-        <fieldset><legend>판매 중지할 상품</legend>${this.shop.products.map((p) => `<label class="admin-check"><input type="checkbox" name="disabled" value="${escapeHtml(p.id)}" ${this.shop.disabled.includes(p.id) ? 'checked' : ''}> ${escapeHtml(p.name)} · ${escapeHtml(p.price)} CGC</label>`).join('')}</fieldset>
+        <fieldset><legend>상품 가격 (CGC) · 비우면 판매하지 않음</legend>${this.shop.products.map((p) => `<label class="field admin-price">${escapeHtml(p.name)}<input name="price:${escapeHtml(p.id)}" inputmode="decimal" pattern="[0-9]+(\\.[0-9]{1,6})?" placeholder="미설정" value="${escapeHtml(p.price || '')}"></label>`).join('')}</fieldset>
+        <fieldset><legend>판매 중지할 상품</legend>${this.shop.products.map((p) => `<label class="admin-check"><input type="checkbox" name="disabled" value="${escapeHtml(p.id)}" ${this.shop.disabled.includes(p.id) ? 'checked' : ''}> ${escapeHtml(p.name)}</label>`).join('')}</fieldset>
         <fieldset><legend>가속을 쓸 수 있는 대기열</legend>${types.map(([id, label]) => `<label class="admin-check"><input type="checkbox" name="speedup" value="${id}" ${this.shop.allowedTypes.includes(id) ? 'checked' : ''}> ${label}</label>`).join('')}</fieldset>
         <button type="submit" class="cmd-btn primary">상점 설정 저장</button></form>`;
   }
@@ -197,14 +212,30 @@ export class AdminEvents {
     Object.assign(t, { typeId: get('typeId'), name: get('name'), description: get('description'), regenPerHour: Number(get('regenPerHour')) });
     t.techs = { weapons: Number(get('weapons')), shield: Number(get('shield')), armor: Number(get('armor')) };
     try { t.defaultPoolMicro = cgcToMicro(get('defaultPool')); } catch { /* validated on save */ }
-    t.units = [...form.querySelectorAll('[data-unit]')].map((row) => {
+    t.model = this.modelFromForm(form);
+    const previous = t.units;
+    t.units = [...form.querySelectorAll('[data-unit]')].map((row, index) => {
       const field = (name) => row.querySelector(`[name="${name}"]`).value;
       return {
         unitId: field('unitId'), name: field('unitName'), count: Number(field('count')), wave: Number(field('wave')), combatClass: field('combatClass'),
-        stats: { hull: Number(field('hull')), shield: Number(field('unitShield')), attack: Number(field('attack')) },
+        stats: { hull: Number(field('hull')), shield: Number(field('unitShield')), attack: Number(field('attack')), rapidFire: previous[index]?.stats?.rapidFire || {} },
         wreck: { metal: Number(field('wreckMetal')), crystal: Number(field('wreckCrystal')) }
       };
     });
+  }
+
+  modelFromForm(form) {
+    const value = (name) => form.elements[name]?.value;
+    return { body: value('modelBody'), color: value('modelColor'), eyes: Number(value('modelEyes')), spikes: Number(value('modelSpikes')), tentacles: Number(value('modelTentacles')), seed: Number(value('modelSeed')) };
+  }
+
+  /** Redraw the 3D preview of the monster being edited (the renderer is shared and queued). */
+  refreshPreview() {
+    const form = this.root.querySelector('[data-form="type"]');
+    const img = form?.querySelector('.admin-model-preview');
+    if (!img) return;
+    const model = this.modelFromForm(form);
+    monsterThumbnail(model).then((url) => { if (img.isConnected) { img.src = url; img.hidden = false; } }).catch(() => { img.hidden = true; });
   }
 
   async onSubmit(form) {
@@ -237,6 +268,9 @@ export class AdminEvents {
         }) });
         this.draw();
       } else if (kind === 'shop') {
+        const prices = {};
+        for (const p of this.shop.products) prices[p.id] = String(data.get(`price:${p.id}`) || '').trim() || null;
+        await this.request('/api/admin/shop/prices', { method: 'PUT', body: JSON.stringify({ prices }) });
         await this.request('/api/admin/shop/disabled', { method: 'PUT', body: JSON.stringify({ disabled: data.getAll('disabled') }) });
         await this.request('/api/admin/shop/speedup', { method: 'PUT', body: JSON.stringify({ allowedTypes: data.getAll('speedup') }) });
         this.toast('이벤트', '상점 설정을 저장했습니다.', 'success');

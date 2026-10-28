@@ -18,12 +18,15 @@ const AuditLog = require('../models/AuditLog');
 const metanomic = require('./MetanomicClient');
 const { atomic } = require('./transactions');
 const { products, getProduct } = require('../data/shop');
-const { formatCgc } = require('../utils/cgcAmount');
+const { formatCgc, parseCgc } = require('../utils/cgcAmount');
 
 const MAX_OPEN_ORDERS = 3;
 const OPEN = ['CREATED', 'PROCESSING'];
 const ACTIVE = ['CREATED', 'PROCESSING', 'PAID', 'CLAIMED', 'DELIVERED'];
 const BATCH = 50;
+
+/** Unit price in micro CGC set by the administrator, or null when the product is not priced. */
+const priceOf = (config, sku) => config.shop?.prices?.[sku] || null;
 
 function fail(statusCode, code, message, extra = {}) {
   throw Object.assign(new Error(message), { statusCode, code, ...extra });
@@ -55,8 +58,8 @@ async function catalog(userId) {
     entitlements: { emblems: user?.entitlements?.emblems || [], speedupSeconds: user?.entitlements?.speedupSeconds || 0 },
     products: products.map((product) => ({
       id: product.id, kind: product.kind, name: product.name, emblem: product.emblem, grants: product.grants,
-      priceMicro: product.priceMicro, price: formatCgc(product.priceMicro), maxQuantity: product.maxQuantity,
-      available: !disabled.has(product.id) && !(product.kind === 'emblem' && user?.entitlements?.emblems?.includes(product.emblem))
+      priceMicro: priceOf(config, product.id), price: priceOf(config, product.id) && formatCgc(priceOf(config, product.id)), maxQuantity: product.maxQuantity,
+      available: Boolean(priceOf(config, product.id)) && !disabled.has(product.id) && !(product.kind === 'emblem' && user?.entitlements?.emblems?.includes(product.emblem))
     }))
   };
 }
@@ -73,20 +76,21 @@ async function createOrder(userId, { sku, quantity = 1, requestId }) {
   const [config, user] = await Promise.all([GameConfig.getConfig(), User.findById(userId).select('wallet entitlements')]);
   if (!user) fail(404, 'USER_NOT_FOUND', '사용자를 찾을 수 없습니다.');
   if (!user.wallet?.address) fail(409, 'WALLET_REQUIRED', '먼저 지갑을 연결하십시오.');
-  if ((config.shop?.disabled || []).includes(sku)) fail(409, 'PRODUCT_DISABLED', '현재 판매하지 않는 상품입니다.');
+  const unitPriceMicro = priceOf(config, sku);
+  if (!unitPriceMicro || (config.shop?.disabled || []).includes(sku)) fail(409, 'PRODUCT_DISABLED', '현재 판매하지 않는 상품입니다.');
   if (product.kind === 'emblem' && user.entitlements?.emblems?.includes(product.emblem)) fail(409, 'ALREADY_OWNED', '이미 보유한 문장입니다.');
   const open = await CgcOrder.find({ userId, status: { $in: OPEN } }).select('sku').lean();
   if (open.length >= MAX_OPEN_ORDERS) fail(429, 'TOO_MANY_OPEN_ORDERS', '진행 중인 주문이 너무 많습니다. 기존 주문을 완료하거나 만료를 기다리십시오.');
   if (product.kind === 'emblem' && open.some((order) => order.sku === sku)) fail(409, 'ORDER_IN_PROGRESS', '이 문장의 주문이 이미 진행 중입니다.');
 
   const orderId = `ord_${randomUUID()}`;
-  const totalMicro = (BigInt(product.priceMicro) * BigInt(quantity)).toString();
+  const totalMicro = (BigInt(unitPriceMicro) * BigInt(quantity)).toString();
   const body = client.buildPaymentBody({ payer: user.wallet.address, orderId, amountMicro: totalMicro, item: { sku, name: product.name, quantity } });
   let order;
   try {
     order = await CgcOrder.create({
       orderId, userId, requestId, payerWallet: user.wallet.address, sku, kind: product.kind, name: product.name, quantity,
-      unitPriceMicro: product.priceMicro, totalMicro, grants: product.grants || {}, paymentRequest: body
+      unitPriceMicro, totalMicro, grants: product.grants || {}, paymentRequest: body
     });
   } catch (error) {
     if (error.code === 11000) return CgcOrder.findOne({ userId, requestId }); // concurrent duplicate request
@@ -251,7 +255,7 @@ async function setDisabled(actorId, skus) {
   if (!Array.isArray(skus) || skus.some((sku) => !known.has(sku))) fail(400, 'UNKNOWN_PRODUCT', '알 수 없는 상품이 포함되어 있습니다.');
   const config = await GameConfig.getConfig();
   const previous = [...(config.shop?.disabled || [])];
-  config.shop = { disabled: [...new Set(skus)] };
+  config.shop.disabled = [...new Set(skus)];
   config.updatedAt = new Date();
   config.updatedBy = actorId;
   await config.save();
@@ -273,14 +277,37 @@ async function setSpeedupTypes(actorId, types) {
   return { allowedTypes: config.speedupSettings.allowedTypes };
 }
 
+/** Set or clear unit prices. `prices` maps sku -> CGC decimal string ("1.5"); null/"" removes the price. */
+async function setPrices(actorId, prices) {
+  if (!prices || typeof prices !== 'object' || Array.isArray(prices)) fail(400, 'INVALID_PRICES', '가격 형식이 올바르지 않습니다.');
+  const config = await GameConfig.getConfig();
+  const previous = { ...(config.shop.prices || {}) };
+  const next = { ...previous };
+  for (const [sku, value] of Object.entries(prices)) {
+    if (!getProduct(sku)) fail(400, 'UNKNOWN_PRODUCT', `존재하지 않는 상품입니다: ${sku}`);
+    if (value === null || value === '') { delete next[sku]; continue; }
+    let micro;
+    try { micro = parseCgc(String(value)); } catch { fail(400, 'INVALID_PRICE', `${sku}: 가격 형식이 올바르지 않습니다.`); }
+    if (micro <= 0n) fail(400, 'INVALID_PRICE', `${sku}: 가격은 0보다 커야 합니다.`);
+    next[sku] = micro.toString();
+  }
+  config.shop.prices = next;
+  config.markModified('shop');
+  config.updatedAt = new Date();
+  config.updatedBy = actorId;
+  await config.save();
+  await AuditLog.create({ actorId, action: 'shop.prices', payload: { previous, prices: next } });
+  return { prices: Object.fromEntries(Object.entries(next).map(([sku, micro]) => [sku, formatCgc(micro)])) };
+}
+
 async function adminOverview() {
   const config = await GameConfig.getConfig();
   return {
     enabled: metanomic.isEnabled(),
     disabled: [...(config.shop?.disabled || [])],
     allowedTypes: [...(config.speedupSettings?.allowedTypes || [])],
-    products: products.map((p) => ({ id: p.id, kind: p.kind, name: p.name, price: formatCgc(p.priceMicro) }))
+    products: products.map((p) => ({ id: p.id, kind: p.kind, name: p.name, price: priceOf(config, p.id) ? formatCgc(priceOf(config, p.id)) : null }))
   };
 }
 
-module.exports = { setSpeedupTypes, adminOverview, catalog, createOrder, listOrders, getOrder, relayAuthorization, processOrders, setDisabled, orderView, MAX_OPEN_ORDERS };
+module.exports = { setPrices, setSpeedupTypes, adminOverview, catalog, createOrder, listOrders, getOrder, relayAuthorization, processOrders, setDisabled, orderView, MAX_OPEN_ORDERS };

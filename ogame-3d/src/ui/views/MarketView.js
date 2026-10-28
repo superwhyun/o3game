@@ -131,7 +131,7 @@ export class MarketView {
   }
 
   productsHtml() {
-    const products = this.catalog?.products || [];
+    const products = (this.catalog?.products || []).filter((p) => p.priceMicro);
     if (!products.length) return '<p class="market-muted">판매 중인 상품이 없습니다.</p>';
     const ready = this.wallet?.enabled && this.wallet?.linked;
     const canSign = this.providers().length > 0;

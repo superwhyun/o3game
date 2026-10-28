@@ -22,6 +22,32 @@ const bad = (message, code) => { throw new MonsterRuleError(message, code); };
 const isInt = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 const intOr = (value, fallback) => (value === undefined || value === null ? fallback : value);
 
+const MAX_SHOT_MULTIPLIER = 6;
+
+const MODEL_BODIES = ['orb', 'worm', 'crab', 'manta'];
+
+/** Procedural 3D look of a monster; every field is optional and clamped to a safe range. */
+function validateModel(input) {
+  if (input === undefined || input === null) return {};
+  if (typeof input !== 'object' || Array.isArray(input)) bad('모델 사양이 올바르지 않습니다.');
+  const model = {};
+  if (input.body !== undefined) {
+    if (!MODEL_BODIES.includes(input.body)) bad(`모델 형태는 ${MODEL_BODIES.join(', ')} 중 하나여야 합니다.`);
+    model.body = input.body;
+  }
+  if (input.color !== undefined) {
+    if (typeof input.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(input.color)) bad('모델 색상은 #rrggbb 형식이어야 합니다.');
+    model.color = input.color.toLowerCase();
+  }
+  for (const [key, min, max] of [['eyes', 0, 8], ['spikes', 0, 16], ['tentacles', 0, 10], ['seed', 0, 9999]]) {
+    if (input[key] === undefined) continue;
+    if (!isInt(input[key], min, max)) bad(`모델 ${key} 값은 ${min}~${max} 정수여야 합니다.`);
+    model[key] = input[key];
+  }
+  if (Object.keys(input).some((key) => !(key in model))) bad('모델 사양에 알 수 없는 항목이 있습니다.');
+  return model;
+}
+
 function validateMonsterType(input) {
   if (!input || typeof input !== 'object') bad('괴수 정의가 필요합니다.');
   const typeId = String(input.typeId ?? '');
@@ -53,6 +79,10 @@ function validateMonsterType(input) {
       if (!CATALOG_IDS.has(target) || typeof chance !== 'number' || !(chance >= 0 && chance <= 20)) bad(`${where}: 속사 설정이 올바르지 않습니다.`);
       rapidFire[target] = chance;
     }
+    // The engine grants the extra shots per rapid-fire entry whatever the enemy fleet contains,
+    // so the entries add up to a flat multiplier on the unit's volley. Keep that multiplier tunable.
+    const shotMultiplier = 1 + Object.values(rapidFire).reduce((sum, chance) => sum + chance, 0);
+    if (shotMultiplier > MAX_SHOT_MULTIPLIER) bad(`${where}: 속사 합계가 너무 큽니다. 한 번에 쏘는 평균 발수(1 + 속사 합)는 ${MAX_SHOT_MULTIPLIER} 이하여야 합니다. 괴수의 속사는 대상과 무관하게 모든 사격에 적용됩니다.`);
     const wave = intOr(unit.wave, 0);
     if (!isInt(wave, 0, 7)) bad(`${where}: 웨이브는 0~7이어야 합니다.`);
     const combatClass = unit.combatClass ?? 'HEAVY';
@@ -76,8 +106,7 @@ function validateMonsterType(input) {
   if (typeof regenPerHour !== 'number' || !(regenPerHour >= 0 && regenPerHour <= 100)) bad('재생률은 0~100이어야 합니다.');
   const defaultPoolMicro = String(intOr(input.defaultPoolMicro, '0'));
   if (!/^(0|[1-9][0-9]{0,17})$/.test(defaultPoolMicro)) bad('기본 보상 풀이 올바르지 않습니다.');
-  const model = input.model && typeof input.model === 'object' ? input.model : {};
-  if (JSON.stringify(model).length > 600) bad('모델 사양이 너무 깁니다.');
+  const model = validateModel(input.model);
   return { typeId, name, description, units, techs, regenPerHour, defaultPoolMicro, model };
 }
 

@@ -3,6 +3,7 @@
  * the CGC pool and the damage ranking. A monster that moves is followed by re-reading the list.
  */
 import { escapeHtml, formatAmount, formatDuration } from '../dom.js';
+import { monsterThumbnail } from '../../three/monsters/MonsterModel.js';
 
 const STATUS_LABEL = { SCHEDULED: '출현 예정', ACTIVE: '출현 중', DEFEATED: '처치됨', SETTLING: '보상 정산 중' };
 
@@ -16,6 +17,7 @@ export class MonsterBoard {
     this.open = null;
     this.ranking = null;
     this.error = '';
+    this.thumbs = new Map(); // eventId -> data URL, so redraws do not flash
     root.addEventListener('click', (event) => {
       const show = event.target.closest('[data-monster-show]');
       const rank = event.target.closest('[data-monster-rank]');
@@ -52,6 +54,10 @@ export class MonsterBoard {
     this.root.innerHTML = `<header class="monster-board-head"><p class="fleet-eyebrow">SPACE MONSTERS</p><h3>우주괴수 <span>${this.monsters.length}</span></h3></header>
       ${this.error ? `<p class="market-error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       <div class="monster-card-grid">${this.monsters.map((m) => this.cardHtml(m)).join('')}</div>`;
+    for (const m of this.monsters) {
+      if (this.thumbs.has(m.eventId)) continue;
+      monsterThumbnail(m.model || {}).then((url) => { this.thumbs.set(m.eventId, url); const img = this.root.querySelector(`[data-monster-art="${CSS.escape(m.eventId)}"]`); if (img) { img.src = url; img.hidden = false; } }).catch((error) => console.warn('monster thumbnail', error));
+    }
   }
 
   cardHtml(m) {
@@ -61,6 +67,7 @@ export class MonsterBoard {
     const active = m.status === 'ACTIVE';
     const rank = this.open === m.eventId && this.ranking?.event?.eventId === m.eventId ? this.ranking : null;
     return `<article class="monster-card" data-monster="${escapeHtml(m.eventId)}">
+      <img class="monster-card-art" data-monster-art="${escapeHtml(m.eventId)}" alt="" width="112" height="72" ${this.thumbs.has(m.eventId) ? `src="${this.thumbs.get(m.eventId)}"` : 'hidden'}>
       <div class="monster-card-top"><strong>${escapeHtml(m.name)}</strong><span class="fleet-status ${active ? 'ready' : ''}">${STATUS_LABEL[m.status] || m.status}</span></div>
       ${m.description ? `<p class="market-muted">${escapeHtml(m.description)}</p>` : ''}
       <div class="monster-hp" role="img" aria-label="체력 ${Number(m.hpPercent).toFixed(1)}%"><span style="width:${Math.max(0, Math.min(100, m.hpPercent))}%"></span></div>

@@ -69,7 +69,9 @@ const gameConfigSchema = new mongoose.Schema({
   
   // CGC shop and speed-up rules (admin controlled)
   shop: {
-    disabled: { type: [String], default: () => [] }
+    disabled: { type: [String], default: () => [] },
+    // sku -> unit price in micro CGC (integer string); no entry = not for sale
+    prices: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }
   },
   speedupSettings: {
     allowedTypes: { type: [String], default: () => ['building', 'research', 'ship'] }

@@ -12,7 +12,7 @@ function validateProducts(list) {
     seen.add(product.id);
     if (!KINDS.has(product.kind) || !product.id.startsWith(`${product.kind}.`)) throw new Error(`${where}: kind must match the id prefix`);
     if (!product.name) throw new Error(`${where}: name required`);
-    if (!/^[1-9][0-9]{0,17}$/.test(product.priceMicro || '')) throw new Error(`${where}: priceMicro must be a positive integer string`);
+    if (product.priceMicro !== undefined) throw new Error(`${where}: prices are set by the administrator, not in the catalog`);
     if (product.kind === 'emblem' && !/^[a-z]+$/.test(product.emblem || '')) throw new Error(`${where}: emblem id required`);
     if (product.kind === 'speedup' && !(Number.isSafeInteger(product.grants?.speedupSeconds) && product.grants.speedupSeconds > 0)) throw new Error(`${where}: grants.speedupSeconds required`);
     if (product.maxQuantity !== undefined && !(Number.isSafeInteger(product.maxQuantity) && product.maxQuantity >= 1 && product.maxQuantity <= 1000)) throw new Error(`${where}: invalid maxQuantity`);

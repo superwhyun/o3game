@@ -25,6 +25,9 @@ test('monster definitions are validated field by field and normalized', () => {
   reject(type({ units: [unit({ stats: { hull: 0, attack: 1 } })] }), /장갑/);
   reject(type({ units: [unit({ stats: { hull: 10, shield: -1 } })] }), /방어막/);
   reject(type({ units: [unit({ stats: { hull: 10, rapidFire: { nothing: 3 } } })] }), /속사/);
+  // Rapid fire multiplies every volley regardless of the enemy fleet, so the total is capped.
+  reject(type({ units: [unit({ stats: { hull: 10, rapidFire: { lightFighter: 3, cruiser: 3 } } })] }), /속사 합계/);
+  assert.ok(rules.validateMonsterType(type({ units: [unit({ stats: { hull: 10, rapidFire: { lightFighter: 3, cruiser: 2 } } })] })));
   reject(type({ units: [unit({ wave: 8 })] }), /웨이브/);
   reject(type({ units: [unit({ combatClass: 'MAGIC' })] }), /전투 분류/);
   reject(type({ units: [unit({ wreck: { metal: -5 } })] }), /잔해/);
@@ -32,6 +35,10 @@ test('monster definitions are validated field by field and normalized', () => {
   reject(type({ regenPerHour: 101 }), /재생률/);
   reject(type({ defaultPoolMicro: '-1' }), /보상 풀/);
   reject(type({ model: { note: 'x'.repeat(700) } }), /모델/);
+  reject(type({ model: { body: 'cube' } }), /모델 형태/);
+  reject(type({ model: { color: 'red' } }), /색상/);
+  reject(type({ model: { tentacles: 11 } }), /tentacles/);
+  assert.deepEqual(rules.validateMonsterType(type({ model: { body: 'crab', color: '#AA3322', eyes: 4, seed: 7 } })).model, { body: 'crab', color: '#aa3322', eyes: 4, seed: 7 });
 });
 
 test('health is tracked per unit, never rounds a living monster to zero and heals slowly when configured', () => {

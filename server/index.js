@@ -52,6 +52,7 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Routes (rate limiting applied above)
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/admin/monsters', require('./routes/adminMonsters'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/queue', require('./routes/buildingQueue'));
 app.use('/api/game', require('./routes/game'));

@@ -6,6 +6,7 @@ const BattleReport = require("../models/BattleReport");
 const entities = require("./EntityConfigService");
 const Combat = require("./CombatService");
 const Debris = require("./DebrisService");
+const Monsters = require("./MonsterService");
 const { atomic, requireTransactions } = require("./transactions");
 const { sameId, plain } = require("../utils/formationRules");
 const { fail } = require("./FleetFormationService");
@@ -35,14 +36,17 @@ function coords(planet) {
     planet: planet.planet,
   };
 }
-const needsTargetCheck = (mission) => !["colonize", "recycle"].includes(mission);
+const needsTargetCheck = (mission, order) => !["colonize", "recycle"].includes(mission) && !order?.monsterEventId;
 function sameCoords(a, b) {
   return ["galaxy", "system", "planet"].every((k) => a[k] === b[k]);
 }
 function cleanOrder(input) {
   if (!["attack", "transport", "colonize", "recycle"].includes(input.mission))
     fail("지원하지 않는 임무입니다.", 400, "INVALID_MISSION");
-  const needsTarget = !["colonize", "recycle"].includes(input.mission);
+  const monsterTarget = input.mission === "attack" && input.target?.type === "monster";
+  if (monsterTarget && !mongoose.isValidObjectId(input.target.eventId))
+    fail("괴수를 다시 선택하십시오.", 400, "INVALID_ID");
+  const needsTarget = !["colonize", "recycle"].includes(input.mission) && !monsterTarget;
   for (const key of ["formationId", "originPlanetId", ...(needsTarget ? ["expectedTargetPlanetId"] : [])])
     if (!mongoose.isValidObjectId(input[key]))
       fail("함대와 목표를 다시 선택하십시오.", 400, "INVALID_ID");
@@ -70,6 +74,7 @@ function cleanOrder(input) {
     formationId: input.formationId,
     originPlanetId: input.originPlanetId,
     expectedTargetPlanetId: needsTarget ? input.expectedTargetPlanetId : null,
+    monsterEventId: monsterTarget ? String(input.target.eventId) : null,
     expectedRevision: input.expectedRevision,
     requestId: input.requestId,
     mission: input.mission,
@@ -128,15 +133,17 @@ async function launch(userId, input) {
       const targetPlanet = target?.planets.find((p) =>
         sameCoords(p, order.destination),
       );
-      if (order.mission === "colonize") {
+      if (order.monsterEventId) {
+        await Monsters.assertTargetable(order.monsterEventId, order.destination);
+      } else if (order.mission === "colonize") {
         if (!(fleet.colonyShip > 0)) fail("식민 임무에는 식민선이 필요합니다.", 400);
-        if (targetPlanet) fail("이미 점령된 행성입니다.", 409, "TARGET_CHANGED");
+        if (targetPlanet || (await Monsters.isOccupied(order.destination))) fail("이미 점령된 행성입니다.", 409, "TARGET_CHANGED");
       } else if (order.mission === "recycle") {
         if (!(fleet[Debris.RECYCLER] > 0)) fail("잔해 수거에는 수확선이 필요합니다.", 400, "RECYCLER_REQUIRED");
         const field = await Debris.get(order.destination);
         if (!field || field.metal + field.crystal <= 0) fail("수거할 잔해가 없습니다.", 409, "NO_DEBRIS");
       } else if (!targetPlanet) fail("목표 행성이 없습니다.", 409, "TARGET_CHANGED");
-      if (needsTargetCheck(order.mission) && !sameId(targetPlanet._id, order.expectedTargetPlanetId))
+      if (needsTargetCheck(order.mission, order) && !sameId(targetPlanet._id, order.expectedTargetPlanetId))
         fail(
           "목표 행성이 변경되었습니다. 다시 확인하십시오.",
           409,
@@ -144,7 +151,7 @@ async function launch(userId, input) {
         );
       if (
         (order.mission !== "recycle" && sameCoords(planet, order.destination)) ||
-        (order.mission === "attack" && sameId(target._id, user._id))
+        (order.mission === "attack" && target && sameId(target._id, user._id))
       )
         fail("자기 행성에는 공격할 수 없습니다.", 400);
       const startedAt = new Date();
@@ -164,6 +171,7 @@ async function launch(userId, input) {
         formationRevisionAtLaunch: formation.revision,
         originPlanetId: planet._id,
         targetPlanetId: targetPlanet?._id,
+        targetMonsterEventId: order.monsterEventId || undefined,
         requestId: order.requestId,
         requestHash: hash,
         mission: order.mission,
@@ -286,7 +294,7 @@ async function processMovement(id, now = new Date()) {
     }
     if (+movement.arrivalTime > +now) return [];
     if (movement.mission === "colonize") {
-      const occupied = await User.exists({ planets: { $elemMatch: coords(movement.destination) } });
+      const occupied = (await User.exists({ planets: { $elemMatch: coords(movement.destination) } })) || (await Monsters.isOccupied(movement.destination));
       if (occupied) movement.notice = "다른 함대가 먼저 점령했습니다. 모든 함선이 귀환합니다.";
       else if (!(movement.fleet.colonyShip > 0)) movement.notice = "식민선이 없어 개척하지 못했습니다. 귀환합니다.";
       else {
@@ -310,6 +318,7 @@ async function processMovement(id, now = new Date()) {
       await movement.save();
       return [String(owner._id)];
     }
+    if (movement.mission === "attack" && movement.targetMonsterEventId) return Monsters.resolveAttack(owner, movement, now);
     if (movement.mission === "recycle") {
       const stats = (id) => entities.getEntity("ship", id)?.stats;
       const used = Object.values(plain(movement.cargo)).reduce((a, b) => a + b, 0);

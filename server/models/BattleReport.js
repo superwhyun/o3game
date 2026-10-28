@@ -14,7 +14,7 @@ const battleReportSchema = new mongoose.Schema({
   },
   
   defender: {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // absent when the defender is an event monster
     username: { type: String, required: true },
     coordinates: {
       galaxy: Number,
@@ -23,6 +23,16 @@ const battleReportSchema = new mongoose.Schema({
     }
   },
   
+  // Set when the defender is an event monster
+  monster: {
+    eventId: mongoose.Schema.Types.ObjectId,
+    name: String,
+    damage: Number,
+    remainingPercent: Number,
+    defeated: Boolean,
+    share: Number
+  },
+
   // Battle Time
   battleTime: { type: Date, default: Date.now },
   

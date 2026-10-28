@@ -3,6 +3,7 @@ const formations = require('../services/FleetFormationService');
 const fleetService = require('../services/FleetService');
 const { formatFleetMovement } = require('../services/GameStateService');
 const express = require('express');
+const mongoose = require('mongoose');
 
 const { authMiddleware } = require('../middleware/admin');
 const BattleReport = require('../models/BattleReport');
@@ -83,12 +84,14 @@ router.get('/galaxy', authMiddleware, async (req, res) => {
     }).select('_id username isOnline planets').lean();
 
     const debris = await require('../services/DebrisService').inSystem(galaxy, system);
+    const monsters = await require('../services/MonsterService').inSystem(galaxy, system);
     const { conflicts, ...view } = buildGalaxySystem({
       galaxy,
       system,
       requestingUserId: req.user._id,
       users,
-      debris
+      debris,
+      monsters
     });
     if (conflicts.length > 0) {
       console.warn(`[galaxy] ${conflicts.length} duplicate planet slot(s) in [${galaxy}:${system}] — run "npm run migrate:planets"`, conflicts);
@@ -139,6 +142,17 @@ router.post('/fleets',authMiddleware,async(req,res)=>{
     const unsupported=error.code===20 || /Transaction numbers/.test(error.message);
     res.status(error.statusCode || (unsupported?503:error.name==='VersionError'?409:400)).json({error:unsupported?'DB의 트랜잭션 구성이 필요합니다.':error.message,code:error.code||'LAUNCH_FAILED'});
   }
+});
+
+router.get('/monsters', authMiddleware, async (req, res) => {
+  try { res.json({ monsters: await require('../services/MonsterService').listVisible(req.user._id) }); }
+  catch (error) { res.status(500).json({ error: 'Unable to load monsters' }); }
+});
+router.get('/monsters/:eventId', authMiddleware, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.eventId)) return res.status(400).json({ error: 'Invalid event' });
+    res.json(await require('../services/MonsterService').detail(req.params.eventId, req.user._id));
+  } catch (error) { res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to load monster', code: error.code }); }
 });
 
 router.get('/reports', authMiddleware, async (req, res) => {

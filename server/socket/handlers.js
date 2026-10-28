@@ -15,6 +15,8 @@ class SocketHandlers {
     this.io = io;
     this.connectedUsers = new Map();
     this.setupGlobalTicks();
+    // Tell every connected commander when a monster appears, moves or falls.
+    require('../services/MonsterService').setNotifier((type, payload) => this.io.emit('monsterEvent', { type, ...payload }));
   }
   
   handleConnection(socket) {
@@ -248,6 +250,7 @@ class SocketHandlers {
     setInterval(async () => {
       await this.processFleetArrivals();
       await settleUsersWithDueQueues(new Date());
+      await require('../services/MonsterService').sweep(new Date()).catch((error) => console.error('Monster sweep failed:', error.message));
     }, 5000);
   }
   

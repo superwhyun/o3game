@@ -125,7 +125,10 @@ async function loadOccupiedCoordinateKeys(UserModel) {
     { $unwind: '$planets' },
     { $project: { _id: 0, galaxy: '$planets.galaxy', system: '$planets.system', planet: '$planets.planet' } }
   ]);
-  return new Set(rows.map(coordinateKey));
+  const keys = new Set(rows.map(coordinateKey));
+  // Slots held by an active event monster are not free for new home planets either.
+  for (const key of await require('../services/MonsterService').occupiedKeys()) keys.add(key);
+  return keys;
 }
 
 function isCoordinateConflict(error) {

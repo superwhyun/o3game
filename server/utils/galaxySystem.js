@@ -10,7 +10,7 @@ function idToString(value) {
   return value?.toString?.() ?? String(value);
 }
 
-function buildGalaxySystem({ galaxy, system, requestingUserId, users, debris = [] }) {
+function buildGalaxySystem({ galaxy, system, requestingUserId, users, debris = [], monsters = [] }) {
   assertCoordinate(galaxy, 'galaxy', GALAXY_COUNT);
   assertCoordinate(system, 'system', SYSTEM_COUNT);
 
@@ -51,6 +51,11 @@ function buildGalaxySystem({ galaxy, system, requestingUserId, users, debris = [
   for (const field of debris) {
     const slot = positions[field.planet - 1];
     if (slot && field.metal + field.crystal > 0) slot.debris = { metal: field.metal, crystal: field.crystal };
+  }
+
+  for (const monster of monsters) {
+    const slot = positions[monster.planet - 1];
+    if (slot) slot.monster = monster;
   }
 
   return { galaxy, system, positions, conflicts };

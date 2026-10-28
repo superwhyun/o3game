@@ -21,6 +21,7 @@ const fleetMovementSchema = new mongoose.Schema({
   formationRevisionAtLaunch: Number,
   originPlanetId: mongoose.Schema.Types.ObjectId,
   targetPlanetId: mongoose.Schema.Types.ObjectId,
+  targetMonsterEventId: { type: mongoose.Schema.Types.ObjectId, default: null },
   requestId: String,
   requestHash: String,
   deckVersion: { type: Number, default: 1 },

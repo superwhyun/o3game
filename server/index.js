@@ -90,6 +90,8 @@ async function startServer() {
     console.log(`🧠 Entity catalog loaded (revision ${entityConfigService.getRevision()})`);
 
     const PORT = process.env.PORT || 3000;
+    require('./services/CgcPoller').addJob('rewards', (client, now) => require('./services/CgcRewardService').process(client, now));
+    require('./services/CgcPoller').start();
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 Socket.io ready for connections`);

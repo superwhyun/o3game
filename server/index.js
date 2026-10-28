@@ -56,6 +56,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/queue', require('./routes/buildingQueue'));
 app.use('/api/game', require('./routes/game'));
 app.use('/api/wallet', require('./routes/wallet'));
+app.use('/api/shop', require('./routes/shop'));
 
 // Make io accessible in routes
 app.set('io', io);
@@ -91,6 +92,7 @@ async function startServer() {
 
     const PORT = process.env.PORT || 3000;
     require('./services/CgcPoller').addJob('rewards', (client, now) => require('./services/CgcRewardService').process(client, now));
+    require('./services/CgcPoller').addJob('shop-orders', (client) => require('./services/ShopService').processOrders(client));
     require('./services/CgcPoller').start();
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);

@@ -72,6 +72,12 @@ const userSchema = new mongoose.Schema({
   currentPlanet: { type: Number, default: 0 },
   terraformingLevel: { type: Number, default: 0, min: 0, max: 30 },
 
+  // Rights bought with CGC. Purchases only grant these; effects are applied by separate in-game actions.
+  entitlements: {
+    emblems: { type: [String], default: () => [] },
+    speedupSeconds: { type: Number, default: 0, min: 0 }
+  },
+
   // Linked CGC wallet (lowercase 0x address). One wallet per account, never changed by the player.
   wallet: {
     address: { type: String, lowercase: true, trim: true },

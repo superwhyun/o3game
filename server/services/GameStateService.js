@@ -234,6 +234,8 @@ function buildGameSnapshot(user, { config, now, queueState, fleetMovements, comp
     isAdmin: user.isAdmin,
     currentPlanet: currentPlanetIndex,
     stateRevision: user.stateRevision || 0,
+    wallet: user.wallet?.address ? { address: user.wallet.address, linkedAt: user.wallet.linkedAt } : null,
+    entitlements: { emblems: [...(user.entitlements?.emblems || [])], speedupSeconds: user.entitlements?.speedupSeconds || 0 },
     fleetFormations: (user.fleetFormations || []).map(f => ({ ...f.toObject(), id: f._id })),
     unassignedShips: require('../utils/formationRules').availableShips(user, currentPlanet._id),
     planets: user.planets.map((planet, index) => buildPlanetSnapshot(planet, config, user.terraformingLevel || 0, queues, String(index))),

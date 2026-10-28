@@ -230,6 +230,24 @@ router.delete('/users/:userId/wallet', superAdminMiddleware, async (req, res) =>
   }
 });
 
+// Shop: switch products on/off and review orders
+router.put('/shop/disabled', superAdminMiddleware, async (req, res) => {
+  try {
+    res.json(await require('../services/ShopService').setDisabled(req.user._id, req.body?.disabled));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message, code: error.code });
+  }
+});
+router.get('/shop/orders', adminMiddleware, async (req, res) => {
+  try {
+    const filter = req.query.status ? { status: String(req.query.status) } : {};
+    const orders = await require('../models/CgcOrder').find(filter).sort({ createdAt: -1 }).limit(100).lean();
+    res.json({ orders: orders.map((o) => ({ orderId: o.orderId, userId: o.userId, sku: o.sku, quantity: o.quantity, totalMicro: o.totalMicro, status: o.status, paymentStatus: o.paymentStatus, paymentId: o.paymentId, lastError: o.lastError, createdAt: o.createdAt })) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Maintenance mode toggle
 router.post('/maintenance', superAdminMiddleware, async (req, res) => {
   try {

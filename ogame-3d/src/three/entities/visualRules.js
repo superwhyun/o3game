@@ -25,6 +25,11 @@ export function visualKey(entity, spec) {
   return `${entity.type}:${entity.id}:${JSON.stringify(spec)}`;
 }
 export const RESEARCH_EXHIBITS = {
+  urbanPlanning: ['주거 공간의 배치를 연구하는 도시 모형입니다.', '주거 구역 · 환경 조절 타워'],
+  agriculturalTechnology: ['작물에 에너지를 공급하는 농업 실험입니다.', '성장 코어 · 공급 링'],
+  educationTechnology: ['교육 정보를 공유하는 학습 시스템입니다.', '교육 데이터 · 연산 랙'],
+  medicalTechnology: ['생명 유지 에너지를 연구하는 의료 실험입니다.', '생체 코어 · 측정 링'],
+  socialPolicy: ['주민의 생활 수요를 분석하는 시스템입니다.', '주민 데이터 · 분석 랙'],
   terraforming: [
     '행성 표면의 개발 가능 환경을 조성하는 실험 모형입니다.',
     '행성 지형 · 환경 조절 타워 · 생태 돔',

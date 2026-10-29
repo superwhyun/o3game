@@ -172,6 +172,16 @@
 .status-locked .entity-name { color: var(--text-dim); }
 
 /* Detail */
+.detail-full-only { display: contents; }
+.detail-more { display: none; }
+.entity-full-details { display: flex; flex-direction: column; gap: 16px; }
+.detail-intro {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: 14px;
+  padding: 20px 26px 18px;
+}
 .entity-detail {
   min-width: 0;
   overflow-y: auto;
@@ -479,17 +489,36 @@
 }
 
 .panel-queue-title {
-  margin-bottom: 6px;
+  cursor: pointer;
+  min-height: 28px;
+  align-content: center;
   font-family: var(--font-serif);
   font-size: var(--text-xs);
   letter-spacing: 0.1em;
   color: var(--gold);
 }
 
+.panel-queue-title:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 3px;
+}
+
+.panel-queue-count {
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-queue-section[open] .panel-queue-title {
+  margin-bottom: 6px;
+}
+
 .panel-queue-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 6px 14px;
+  max-height: min(24dvh, 180px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .queue-list {
@@ -757,6 +786,31 @@
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
+  .panel-queue-section {
+    padding-block: 0;
+  }
+
+  .panel-queue-title {
+    min-height: 44px;
+  }
+
+  .panel-queue-section[open] {
+    padding-bottom: 8px;
+  }
+
+  .panel-queue-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panel-queue-list .btn-cancel {
+    width: 44px;
+    height: 44px;
+  }
+
+  .panel-queue-list .queue-item {
+    grid-template-columns: 26px minmax(0, 1fr) 44px;
+  }
+
   .spec-list {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -803,3 +857,11 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.trade-content { padding: 24px; overflow-y: auto; }
+.resource-trade-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 24px; }
+.resource-trade-form label { display: grid; gap: 8px; color: var(--gold); }
+.resource-trade-form select, .resource-trade-form input { min-width: 0; width: 100%; min-height: 44px; padding: 8px; border: 1px solid var(--line); background: var(--ink-0); color: var(--text); }
+#trade-quote, #trade-message { grid-column: 1 / -1; line-height: 1.7; }
+#trade-submit { min-height: 44px; }
+@media (max-width: 700px) { .resource-trade-form { grid-template-columns: 1fr; } .trade-content { padding: 16px; } }

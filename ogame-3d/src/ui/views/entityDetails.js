@@ -13,6 +13,15 @@ function row(label, value, note = '') {
 function effectRows(entity, level, modifiers = {}) {
   const rows = [];
   const effects = entity.effects || {};
+  if (effects.researchNetwork) rows.push(row('연결 가능한 연구소', `${level + 1}곳`, '다음 단계 +1곳 · 최소 연구소 레벨 충족 시 자동 연결'));
+  for (const [key, label] of Object.entries({ housingPerLevel: '인구 수용량', jobsPerLevel: '일자리', foodPerLevel: '식량 생산', foodStoragePerLevel: '추가 식량 저장량', culturePerLevel: '문화 수용량', knowledgePerLevel: '교육 수용량', healthPerLevel: '의료 수용량', happinessPerLevel: '행복도' })) {
+    const perLevel = effects.population?.[key];
+    if (perLevel) rows.push(row(label, `${formatAmount(perLevel * level)}${key === 'foodPerLevel' ? '/h' : ''}`, `다음 단계 +${formatAmount(perLevel)}`));
+  }
+  for (const [key, label] of Object.entries({ housingBonusPerLevel: '주거시설 수용량', foodBonusPerLevel: '농장 식량 생산', knowledgeBonusPerLevel: '교육원 수용량', healthBonusPerLevel: '의료센터 수용량' })) {
+    const value = effects.population?.[key];
+    if (value) rows.push(row(label, `+${Math.round(value * level * 100)}%`, `다음 단계 +${Math.round(value * 100)}% · 현재 행성`));
+  }
   if (effects.usablePercentPerLevel) rows.push(row('모든 행성 가용률', `단계당 +${effects.usablePercentPerLevel}%p`, `최대 ${effects.maxLevel}레벨 · 가용률 상한 100%`));
   const delta = (rule, multiplier = 1) => {
     const now = evaluateEffect(rule, level) * multiplier;
@@ -46,12 +55,25 @@ function effectRows(entity, level, modifiers = {}) {
   return rows;
 }
 
-function statRows(entity, count) {
+function statRows(entity, count, energyState) {
   const stats = entity.stats || {};
   const rows = Object.entries(STAT_LABELS)
     .filter(([key]) => stats[key] !== undefined && stats[key] !== 0)
     .map(([key, label]) => row(label, formatAmount(stats[key]), count > 1 && ['attack', 'cargo'].includes(key) ? `×${count} = ${formatAmount(stats[key] * count)}` : ''));
 
+  if (entity.type === 'ship' && stats.crew != null) {
+    rows.push(row('척당 승무원', stats.crew ? `${formatAmount(stats.crew)}명 · 편성 시 행성 인구에서 배치` : '무인'));
+    if (stats.upkeep) rows.push(row('척당 자원 유지비', `금속 ${Number(stats.upkeep.metal || 0).toLocaleString('ko-KR', { maximumFractionDigits: 2 })} · 중수소 ${Number(stats.upkeep.deuterium || 0).toLocaleString('ko-KR', { maximumFractionDigits: 2 })}`, '시간당 · 서버 속도 배율 적용'));
+  }
+
+  if (entity.id === 'solarSatellite') {
+    const contribution = energyState?.sources?.find(source => source.id === 'solarSatellite');
+    if (contribution) {
+      rows.push(row('1기당 발전량', formatAmount(contribution.perUnit), '현재 행성 온도 기준 · 서버 속도와 무관'));
+      rows.push(row('보유 위성 총 발전량', formatAmount(contribution.amount), `보유 ${formatAmount(contribution.count)}기`));
+      rows.push(row('건조 시 추가 발전량', `+${formatAmount(contribution.perUnit * count)}`, `${formatAmount(count)}기 건조 기준`));
+    }
+  }
   const rapidFire = Object.entries(stats.rapidFire || {});
   if (rapidFire.length > 0) {
     const targets = rapidFire
@@ -63,8 +85,8 @@ function statRows(entity, count) {
 }
 
 /** @returns {string} */
-export function renderSpecs(entity, { level = 0, count = 1, modifiers = {} } = {}) {
-  const rows = catalog.isLeveled(entity.type) ? effectRows(entity, level, modifiers) : statRows(entity, count);
+export function renderSpecs(entity, { level = 0, count = 1, modifiers = {}, energyState } = {}) {
+  const rows = catalog.isLeveled(entity.type) ? effectRows(entity, level, modifiers) : statRows(entity, count, energyState);
   return rows.length ? `<dl class="spec-list">${rows.join('')}</dl>` : '';
 }
 

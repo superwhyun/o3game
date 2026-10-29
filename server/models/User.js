@@ -25,6 +25,7 @@ const planetSchema = new mongoose.Schema({
   // "galaxy:system:planet" — backs the unique index so two players can never
   // own the same slot, even when they register at the same moment.
   coordinateKey: { type: String },
+  environmentType: { type: String, enum: ['ice', 'volcanic', 'tropical', 'desert'] },
   minTemp: { type: Number, default: -20 },
   maxTemp: { type: Number, default: 40 },
   diameter: { type: Number, default: 12800, min: 0 },
@@ -36,7 +37,8 @@ const planetSchema = new mongoose.Schema({
     metal: { type: Number, default: 500 },
     crystal: { type: Number, default: 300 },
     deuterium: { type: Number, default: 100 },
-    energy: { type: Number, default: 0 }
+    energy: { type: Number, default: 0 },
+    food: { type: Number, default: 0, min: 0 }
   },
   
   // Level / count fields are generated from server/data/catalog —
@@ -46,6 +48,13 @@ const planetSchema = new mongoose.Schema({
   fleet: buildLevelFields(ENTITY_IDS.ship),
   defense: buildLevelFields([...ENTITY_IDS.defense, ...LEGACY_DEFENSE_FIELDS]),
   
+  population: {
+    version: { type: Number }, count: { type: Number, min: 0 },
+    growthProgress: { type: Number, min: 0, max: 1 },
+    starvationProgress: { type: Number, min: 0, max: 1, default: 0 },
+    baseHousing: { type: Number, min: 0 }, baseFood: { type: Number, min: 0 },
+    baseCulture: { type: Number, min: 0 }, foodCapacity: { type: Number, min: 0 }
+  },
   lastUpdate: { type: Date, default: Date.now }
 });
 
@@ -55,6 +64,8 @@ const formationSchema = new mongoose.Schema({
   emblem: { type: String, default: '' },
   originPlanetId: { type: mongoose.Schema.Types.ObjectId, required: true },
   ships: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  crew: { type: Number, min: 0, default: 0, validate: Number.isSafeInteger },
+  crewVersion: Number,
   status: { type: String, enum: ['ready', 'onMission'], default: 'ready' },
   activeMovementId: { type: mongoose.Schema.Types.ObjectId, default: null },
   revision: { type: Number, default: 1 },
@@ -65,12 +76,16 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, trim: true },
   password: { type: String, required: true },
   
+  tokenVersion: { type: Number, default: 0 },
+  preferences: { uiMode: { type: String, enum: ['simple', 'detailed', 'graphics'], default: 'detailed' } },
   // Game Data
   planets: [planetSchema],
   fleetFormations: { type: [formationSchema], default: () => [] },
   nextFleetNumber: { type: Number, default: 1 },
   stateRevision: { type: Number, default: 0 },
   currentPlanet: { type: Number, default: 0 },
+  research: buildLevelFields(ENTITY_IDS.research),
+  researchScopeVersion: { type: Number, default: 0 },
   terraformingLevel: { type: Number, default: 0, min: 0, max: 30 },
 
   // Rights bought with CGC. Purchases only grant these; effects are applied by separate in-game actions.
@@ -98,6 +113,9 @@ const userSchema = new mongoose.Schema({
   socketId: { type: String, default: null },
   
   // Admin
+  isAiPlayer: { type: Boolean, default: false },
+  isPirate: { type: Boolean, default: false },
+  pirate: {level:Number,developmentScore:Number,lastUpdate:Date,rebuildProgress:{type:Number,default:0}},
   isAdmin: { type: Boolean, default: false },
   adminRole: { type: String, enum: ['superadmin', 'moderator', 'support'], default: null },
   isBanned: { type: Boolean, default: false },
@@ -144,10 +162,10 @@ userSchema.pre('save', async function() {
   
   // Initialize first planet for new users on a free coordinate
   if (this.isNew && this.planets.length === 0) {
-    const GameConfig = mongoose.model('GameConfig');
+    const GameConfig = require('./GameConfig');
     const config = await GameConfig.getConfig();
     const startResources = config.newPlayerSettings || { startingMetal: 500, startingCrystal: 300, startingDeuterium: 100 };
-    const home = pickHomeCoordinate(await loadOccupiedCoordinateKeys(this.constructor));
+    const home = pickHomeCoordinate(await loadOccupiedCoordinateKeys(this.constructor), this.$locals.homeAllocation);
     
     this.planets.push({
       name: 'Colony-1',
@@ -162,6 +180,11 @@ userSchema.pre('save', async function() {
     });
   }
 
+  require('../utils/userResearch').normalizeUserResearch(this);
+  if (this.isNew) {
+    const config = await require('./GameConfig').getConfig();
+    this.planets.forEach(planet => require('../utils/populationEconomy').initializePopulation(planet, config));
+  }
   this.planets.forEach(syncPlanetCoordinate);
   require('../utils/formationRules').reconcileFormations(this);
   this.stateRevision = (this.stateRevision || 0) + 1;
@@ -173,9 +196,10 @@ userSchema.pre('save', async function() {
  * fresh document (re-saving the failed one would re-hash its password).
  * @param {object} fields  user fields (username, email, password, ...)
  */
-userSchema.statics.createWithHomePlanet = async function(fields) {
+userSchema.statics.createWithHomePlanet = async function(fields, homeAllocation = {}) {
   for (let attempt = 1; attempt <= MAX_HOME_ALLOCATION_ATTEMPTS; attempt++) {
     const user = new this(fields);
+    user.$locals.homeAllocation = homeAllocation;
     try {
       await user.save();
       return user;

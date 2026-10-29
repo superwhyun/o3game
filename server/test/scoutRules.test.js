@@ -60,6 +60,6 @@ test("stable scout rolls, bounded detection and armed interception", () => {
       { research: { espionageTechnology: 7 } },
       { research: { espionageTechnology: 0 } },
     ),
-    0,
+    7,
   );
 });

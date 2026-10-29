@@ -1,3 +1,4 @@
+import { selectResearchLabs } from './researchNetwork.js';
 /**
  * Client entity catalog.
  *
@@ -179,12 +180,17 @@ class Catalog extends EventEmitter {
    * @param {{ buildings: object, research: object }} state
    * @returns {{ id: string, name: string, kind: 'building'|'research', required: number, current: number, met: boolean }[]}
    */
+  researchNetwork(entity, state) {
+    return selectResearchLabs(state.researchInfrastructure, entity?.requirements?.buildings?.researchLab);
+  }
+
   requirementStatus(entity, state) {
     const rows = [];
     const groups = [['buildings', 'building', state.buildings || {}], ['research', 'research', state.research || {}]];
+    const requirements = entity?.type === 'research' ? { ...entity.requirements, buildings: { ...entity.requirements?.buildings, researchLab: Math.max(1, entity.requirements?.buildings?.researchLab || 0) } } : entity?.requirements || {};
     for (const [group, kind, levels] of groups) {
-      for (const [id, required] of Object.entries(entity?.requirements?.[group] || {})) {
-        const current = levels[id] || 0;
+      for (const [id, required] of Object.entries(requirements[group] || {})) {
+        const current = entity?.type === 'research' && id === 'researchLab' ? (state.researchInfrastructure?.originLabLevel ?? levels[id] ?? 0) : levels[id] || 0;
         rows.push({ id, kind, name: this.get(kind, id)?.name || id, required, current, met: current >= required });
       }
     }

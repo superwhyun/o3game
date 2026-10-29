@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MongoDB
   mongodb:
@@ -34,14 +32,15 @@ services:
     container_name: ogame-server
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${SERVER_PORT:-3999}:3000"
     environment:
       - NODE_ENV=development
       - PORT=3000
       - MONGODB_URI=mongodb://mongodb:27017/cosmic_empire?replicaSet=oogame&directConnection=true
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET to a non-default value of at least 32 characters}
-      - CLIENT_URL=http://localhost:5173
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:${CLIENT_PORT:-5173}}
+      - AI_WORKER_SECRET=${AI_WORKER_SECRET:-}
     volumes:
       - ./server:/app
       - /app/node_modules
@@ -50,22 +49,57 @@ services:
       - redis
     networks:
       - ogame-network
-    command: npm run dev  # 개발용 (파일 변경시 자동 재시작)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: sh -c "npm ci --include=dev && npm run dev"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 30s
+
+  # External-model AI: HTTP API only, no DB or administrator credentials.
+  ai-player:
+    image: node:22-alpine
+    container_name: ogame-ai-player
+    command: node index.js
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./ai-player:/app:ro
+    environment:
+      - GAME_API_URL=http://server:3000
+      - AI_WORKER_SECRET=${AI_WORKER_SECRET:-}
+    depends_on:
+      - server
+    networks:
+      - ogame-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Frontend (Vite dev server)
   client:
-    image: node:20-alpine
+    image: node:22-alpine
     container_name: ogame-client
     restart: unless-stopped
     working_dir: /app
     ports:
-      - "5173:5173"
+      - "${CLIENT_PORT:-5173}:5173"
     volumes:
       - ./ogame-3d:/app
       - /app/node_modules
     environment:
       - NODE_ENV=development
-    command: sh -c "npm install && npm run dev -- --host"
+      - VITE_SERVER_URL=
+      - SERVER_PROXY_TARGET=http://server:3000
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 30s
     depends_on:
       - server
     networks:

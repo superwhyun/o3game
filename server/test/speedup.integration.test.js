@@ -42,8 +42,8 @@ test('stored speed-up time shortens the active item, moves the chain behind it a
     assert.ok(first.body.used >= 499 && first.body.used <= 501); // capped at the time left
     const [h, n, o, r] = await Promise.all([head, next, otherPlanet, research].map((doc) => Queue.findById(doc._id)));
     assert.ok(Math.abs(+h.endTime - Date.now()) < 2000);                       // active item is (about) done
-    assert.equal(+n.startTime, +h.endTime);                                   // chain stays connected
-    assert.equal(+n.endTime, +next.endTime - first.body.used * 1000);
+    assert.ok(Math.abs(+n.startTime - +h.endTime) < 2000);                     // chain stays connected (settlement may restart it a few ms later)
+    assert.ok(Math.abs(+n.endTime - (+next.endTime - first.body.used * 1000)) < 2000);
     assert.equal(+o.endTime, +otherPlanet.endTime);                           // other chains are untouched
     assert.equal(+r.endTime, +research.endTime);
     const after = await User.findById(user._id);

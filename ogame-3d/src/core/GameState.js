@@ -5,21 +5,26 @@ export class GameState extends EventEmitter {
     super();
     
     this.isServerConnected = false;
+    this.areaSettings = { bonusUsableFields: 40 };
+    this.researchInfrastructure = { labLevel: 0, highestLabLevel: 0, labCount: 0 };
     this.serverSpeed = 1;
+    this.flightSpeedMultiplier = 1;
     
     // Resources
     this.resources = {
       metal: 5000,
       crystal: 3000,
       deuterium: 1000,
-      energy: 0
+      energy: 0,
+      food: 0
     };
     
     this.productionRates = {
       metal: 30,
       crystal: 15,
       deuterium: 0,
-      energy: 0
+      energy: 0,
+      food: 0
     };
     
     this.energyProduction = 0;
@@ -124,11 +129,14 @@ export class GameState extends EventEmitter {
     const revision = userData.stateRevision ?? 0;
     const serverTime = new Date(userData.serverTime || Date.now()).getTime();
     if (this.userId === userData.id && (revision < this.stateRevision || (revision === this.stateRevision && serverTime < (this.snapshotTime || 0)))) return false;
+    this.exchange = userData.exchange || null;
     this.userId = userData.id;
     this.stateRevision = revision;
     this.snapshotTime = serverTime;
     this.serverOffset = serverTime - Date.now();
     this.planets = userData.planets;
+    this.preferences = userData.preferences || { uiMode: "detailed" };
+    this.areaSettings = userData.areaSettings || { bonusUsableFields: 40 };
     this.fleetFormations = userData.fleetFormations || [];
     this.wallet = userData.wallet || null;
     this.entitlements = userData.entitlements || { emblems: [], speedupSeconds: 0 };
@@ -136,6 +144,7 @@ export class GameState extends EventEmitter {
     this.unassignedShips = userData.unassignedShips || {};
     // Sync server settings
     this.serverSpeed = userData.serverSpeed || 1;
+    this.flightSpeedMultiplier = userData.flightSpeedMultiplier ?? 1;
     console.log('[GameState.syncFromServer] Server speed set to:', this.serverSpeed);
     
     const currentPlanetIndex = userData.currentPlanet ?? 0;
@@ -154,6 +163,7 @@ export class GameState extends EventEmitter {
         metal: planet.resources.metal || 0,
         crystal: planet.resources.crystal || 0,
         deuterium: planet.resources.deuterium || 0,
+        food: planet.resources.food || 0,
         energy: planet.resources.energy || 0
       });
     }
@@ -163,6 +173,15 @@ export class GameState extends EventEmitter {
       this.buildings = { ...planet.buildings };
     }
     
+    const labs = (userData.planets || []).map((p, index) => ({ planetId: String(p._id ?? index), name: p.name, level: p.buildings?.researchLab || 0 }));
+    this.researchInfrastructure = userData.researchInfrastructure || {
+      labs, originPlanetId: labs[userData.currentPlanet || 0]?.planetId,
+      originLabLevel: labs[userData.currentPlanet || 0]?.level || 0,
+      networkLevel: userData.research?.intergalacticResearchNetwork || 0,
+      labLevel: labs.reduce((sum, p) => sum + p.level, 0),
+      highestLabLevel: Math.max(0, ...labs.map(p => p.level)),
+      labCount: labs.filter(p => p.level > 0).length, labsBusy: false, researchBusy: false
+    };
     // Sync research (user-level, not planet-level)
     if (userData.research) {
       this.research = { ...userData.research };
@@ -184,7 +203,12 @@ export class GameState extends EventEmitter {
       this.planet = {
         id: planet._id,
         area: planet.area,
+        populationState: planet.populationState || null,
+        fleetSupport: planet.fleetSupport || null,
+        population: planet.population || null,
+        energyState: planet.energyState || null,
         traits: planet.traits,
+        environment: planet.environment,
         productionModifiers: planet.productionModifiers,
         name: planet.name || 'Colony-1',
         position: planet.position || 4,
@@ -224,6 +248,7 @@ export class GameState extends EventEmitter {
         metal: snapshot.resources.metal ?? this.resources.metal,
         crystal: snapshot.resources.crystal ?? this.resources.crystal,
         deuterium: snapshot.resources.deuterium ?? this.resources.deuterium,
+        food: snapshot.resources.food ?? this.resources.food,
         energy: snapshot.resources.energy ?? this.resources.energy
       });
     }
@@ -232,6 +257,7 @@ export class GameState extends EventEmitter {
       this.storage = {
         metal: snapshot.storage.metal ?? this.storage.metal,
         crystal: snapshot.storage.crystal ?? this.storage.crystal,
+        food: snapshot.storage.food ?? this.storage.food,
         deuterium: snapshot.storage.deuterium ?? this.storage.deuterium
       };
     }
@@ -241,11 +267,14 @@ export class GameState extends EventEmitter {
         metal: Math.round((snapshot.production.metal || 0) * 10) / 10,
         crystal: Math.round((snapshot.production.crystal || 0) * 10) / 10,
         deuterium: Math.round((snapshot.production.deuterium || 0) * 10) / 10,
+        food: snapshot.production.food || 0,
         energy: 0
       };
       this.resources.energy = Math.round((snapshot.production.energy || 0) * 10) / 10;
-      this.energyProduction = Math.max(this.resources.energy, 0);
-      this.energyConsumption = Math.max(-this.resources.energy, 0);
+      const energyState = snapshot.energyState || this.planet.energyState;
+      if (energyState) this.planet.energyState = energyState;
+      this.energyProduction = energyState?.production ?? Math.max(this.resources.energy, 0);
+      this.energyConsumption = energyState?.consumption ?? Math.max(-this.resources.energy, 0);
       this.emit('productionUpdated', {
         rates: this.productionRates,
         energy: { production: this.energyProduction, consumption: this.energyConsumption }
@@ -259,7 +288,7 @@ export class GameState extends EventEmitter {
     const oldValue = this.resources[type];
     // 소수점 첫째 자리에서 반올림
     const newValue = Math.round((this.resources[type] + amount) * 10) / 10;
-    this.resources[type] = Math.min(newValue, this.storage[type] || Infinity);
+    this.resources[type] = Math.max(0, Math.min(newValue, this.storage[type] || Infinity));
     
     // Debug: log significant changes
     if (Math.abs(amount) > 1) {
@@ -299,8 +328,10 @@ export class GameState extends EventEmitter {
   }
 
   recalculateDerivedState(serverPlanet = null) {
+    if (!serverPlanet && this.planet.populationState && this._syncedFromServer) return;
     if (serverPlanet?.storage) {
       this.storage = {
+        food: serverPlanet.storage.food || 1000,
         metal: serverPlanet.storage.metal || 10000,
         crystal: serverPlanet.storage.crystal || 10000,
         deuterium: serverPlanet.storage.deuterium || 10000
@@ -316,6 +347,7 @@ export class GameState extends EventEmitter {
     if (serverPlanet?.production) {
       this.applyEconomySnapshot({
         production: serverPlanet.production,
+        energyState: serverPlanet.energyState,
         storage: this.storage
       });
       return;
@@ -376,7 +408,7 @@ export class GameState extends EventEmitter {
       this.lastUpdate = now;
       
       for (const [resource, rate] of Object.entries(this.productionRates)) {
-        if (rate > 0) {
+        if (rate !== 0 && resource !== 'energy') {
           const amount = rate * deltaHours;
           this.addResource(resource, amount);
         }

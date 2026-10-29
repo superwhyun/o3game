@@ -95,6 +95,10 @@ test(
           },
         ],
       });
+      user.planets[0].population.count = 200;
+      user.planets[0].population.baseHousing = 200;
+      user.planets[0].population.baseFood = 200;
+      await user.save();
       const planetId = String(user.planets[0]._id);
       const created = await Promise.all([
         forms.change(user._id, "create", null, { originPlanetId: planetId }),
@@ -239,6 +243,11 @@ test(
         fleets.processMovement(results[0]._id, arrived),
       ]);
       assert.equal(await Report.countDocuments(), 1);
+      const savedBattle = await Report.findOne();
+      assert.equal(+savedBattle.battleTime, +arrived);
+      assert.equal(savedBattle.fuelConsumed.deuterium, 0);
+      assert.equal(savedBattle.fuelPolicy, 'notCharged');
+      assert.ok(savedBattle.result.loot.metal >= 0);
       let move = await Movement.findById(results[0]._id);
       assert.equal(move.status, "returning");
       await Promise.all([

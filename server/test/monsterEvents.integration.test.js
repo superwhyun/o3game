@@ -31,7 +31,7 @@ async function world(t, { fakeOptions = {}, cgc = true } = {}) {
   let counter = 0;
   const admin = await models.User.create({ username: 'admin', email: 'admin@test.invalid', password: randomUUID(), isAdmin: true, adminRole: 'superadmin', planets: [{ galaxy: 3, system: 1, planet: 1 }] });
   const player = async (name, { cruisers = 50, wallet = null, system = ++counter, extra = {}, ships = { cruiser: cruisers } } = {}) => {
-    const user = await models.User.create({ username: name, email: `${name}@test.invalid`, password: randomUUID(), lastLogin: new Date(), ...(wallet ? { wallet: { address: wallet, linkedAt: new Date() } } : {}), planets: [{ galaxy: 2, system, planet: 5, fleet: { cruiser: cruisers, colonyShip: 2 }, resources: { metal: 1e9, crystal: 1e9, deuterium: 1e9 } }], ...extra });
+    const user = await models.User.create({ username: name, email: `${name}@test.invalid`, password: randomUUID(), lastLogin: new Date(), ...(wallet ? { wallet: { address: wallet, linkedAt: new Date() } } : {}), planets: [{ galaxy: 2, system, planet: 5, fleet: { cruiser: cruisers, colonyShip: 2 }, resources: { metal: 1e9, crystal: 1e9, deuterium: 1e9, food: 1e7 }, population: { version: 1, count: 5000, baseHousing: 5000, baseFood: 5000, baseCulture: 100, foodCapacity: 100000, growthProgress: 0, starvationProgress: 0 } }], ...extra });
     const created = await forms.change(user._id, 'create', null, { originPlanetId: user.planets[0]._id });
     await forms.change(user._id, 'update', created.formationId, { expectedRevision: 1, name: `${name}함대`, ships });
     return { user, formationId: String(created.formationId), originPlanetId: String(user.planets[0]._id) };

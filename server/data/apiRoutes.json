@@ -1,0 +1,399 @@
+[
+  {
+    "path": "/health",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/auth/register",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/setup-admin",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/login",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/check-admin",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/auth/me",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/queue",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/queue/build",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/queue/demolish",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/queue/research",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/queue/ship",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/queue/planet",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/queue/check/{id}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/queue/{id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/game/catalog",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/game/planets/{planetId}/name",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/game/trade",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/game/galaxy",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/game/galaxy/traffic",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/game/fleets",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/game/fleet-formations",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/game/fleet-formations/{id}",
+    "methods": [
+      "PATCH",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/game/fleet-requests/{requestId}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/game/fleets/{id}/recall",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/game/scouts",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/game/scout-reports",
+    "methods": [
+      "GET",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/game/scout-reports/{id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/game/scout-alerts",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/game/reports",
+    "methods": [
+      "GET",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/game/reports/{id}/read",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/game/improvement-requests",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/game/improvement-requests/{id}/review",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/game/improvement-requests/{id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/admin/config",
+    "methods": [
+      "GET",
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/admin/speed",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/stats",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/admin/users",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/admin/users/{userId}",
+    "methods": [
+      "GET",
+      "PUT",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/admin/users/{userId}/resources",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/maintenance",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/announcement",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/logs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/admin/entity-config",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/admin/entity-config/{type}/{id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/admin/entity-config/bulk",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/entity-config/{type}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/entity-config/reset/{type}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/ready",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/admin/ai-models",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/ai-models/{id}",
+    "methods": [
+      "PUT",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/admin/ai-models/{id}/test",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/ai-players",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/ai-players/{id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/ai-worker/heartbeat",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/ai-worker/claim",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/ai-worker/decide",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/ai-worker/complete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/game/planets/{planetId}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/account/settings",
+    "methods": [
+      "GET",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/account/email",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/account/password",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/account/ai-models",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/account/delegation",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/game/scout-reports/{id}/read",
+    "methods": [
+      "PATCH"
+    ]
+  }
+]

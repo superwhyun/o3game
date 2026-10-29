@@ -1,0 +1,62 @@
+const mongoose = require("mongoose");
+module.exports = mongoose.model(
+  "AiPlayer",
+  new mongoose.Schema(
+    {
+      userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+        unique: true,
+      },
+      kind: { type: String, enum: ["bot", "delegate"], default: "bot" },
+      modelId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AiModel",
+        required: true,
+      },
+      enabled: { type: Boolean, default: true },
+      strategy: {
+        type: String,
+        enum: ["balanced", "economy", "expansion", "military"],
+        default: "balanced",
+      },
+      behaviorScores: {
+        development: Number,
+        expansion: Number,
+        attack: Number,
+      },
+      allowAttacks: { type: Boolean, default: false },
+      proposeImprovements: { type: Boolean, default: true },
+      lastSuggestionAt: Date,
+      lastSuggestionErrorCode: String,
+      suggestions: { type: Number, default: 0 },
+      maxColonies: { type: Number, default: 3 },
+      intervalSeconds: { type: Number, default: 180 },
+      nextRunAt: { type: Date, default: Date.now },
+      lastRunAt: Date,
+      lastAction: String,
+      lastReason: String,
+      history: [
+        {
+          _id: false,
+          runId: String,
+          at: Date,
+          acted: Boolean,
+          recheck: Boolean,
+          action: String,
+          reason: String,
+          errorCode: String,
+          suggestionSubmitted: Boolean,
+          suggestionErrorCode: String,
+        },
+      ],
+      lastErrorCode: String,
+      runs: { type: Number, default: 0 },
+      actions: { type: Number, default: 0 },
+      lease: { runId: String, workerId: String, until: Date },
+      createdBy: mongoose.Schema.Types.ObjectId,
+    },
+    { timestamps: true },
+  ),
+);

@@ -33,6 +33,14 @@ test('home planet allocation against MongoDB', { skip: !uri && 'MONGODB_TEST_URI
     }
   });
 
+  await t.test('concurrent allocations retain the selected galaxy', async () => {
+    const users = await Promise.all(Array.from({ length: 5 }, (_, i) =>
+      User.createWithHomePlanet({ username: `galaxy7pilot${i}`, email: `galaxy7pilot${i}@example.com`, password: 'secret12' }, { galaxy: 7 })
+    ));
+    assert.equal(new Set(users.map(u => u.planets[0].coordinateKey)).size, 5);
+    for (const user of users) assert.equal(user.planets[0].galaxy, 7);
+  });
+
   await t.test('the database rejects a second owner of the same slot', async () => {
     const [taken] = await User.find({}).limit(1).lean();
     const intruder = new User({

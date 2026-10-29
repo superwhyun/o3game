@@ -83,9 +83,9 @@ test('completed construction changes tier, preview preserves commands, research 
     .locator('#buildings-browser [data-model-action="preview"]')
     .click();
   await expect(media).toHaveAttribute('data-tier', '0');
-  await page.locator('#buildings-browser [data-command="building"]').click();
+  await page.locator('#buildings-browser .entity-row.is-selected [data-command="building"]').click();
   await expect(
-    page.locator('#buildings-browser [data-command="building"]'),
+    page.locator('#buildings-browser .entity-row.is-selected [data-command="building"]'),
   ).toBeDisabled();
   await expect(media).toHaveAttribute('data-tier', '0');
   await completeQueue('building');
@@ -102,7 +102,7 @@ test('completed construction changes tier, preview preserves commands, research 
   });
   await page.screenshot({ path: dir + 'building-desktop.png' });
   // Cancel an upgrade: appearance remains the last completed tier.
-  await page.locator('#buildings-browser [data-command="building"]').click();
+  await page.locator('#buildings-browser .entity-row.is-selected [data-command="building"]').click();
   await expect(page.locator('#buildings-panel-queue')).toContainText('L11');
   page.once('dialog', (d) => d.accept());
   const cancelResponse = page.waitForResponse(
@@ -122,7 +122,7 @@ test('completed construction changes tier, preview preserves commands, research 
   await expect(
     page.locator('#research-browser .research-exhibit-note'),
   ).toContainText('발전 코어');
-  await page.locator('#research-browser [data-command="research"]').click();
+  await page.locator('#research-browser .entity-row.is-selected [data-command="research"]').click();
   await completeQueue('research');
   await page.evaluate(() => window.uiManager.syncUserDataFromServer());
   await expect(page.locator('#research-browser .detail-amount')).toContainText(
@@ -169,7 +169,7 @@ test('planet selection and demolition refresh the completed facility tier', asyn
   );
   await expect(media).toHaveAttribute('data-tier', '2');
   page.once('dialog', (d) => d.accept());
-  await page.locator('#buildings-browser [data-command="demolish"]').click();
+  await page.locator('#buildings-browser .entity-row.is-selected [data-command="demolish"]').click();
   await expect(page.locator('#buildings-panel-queue')).toContainText('철거');
   await completeQueue('building');
   await page.evaluate(() => window.uiManager.syncUserDataFromServer());
@@ -196,43 +196,33 @@ test('mobile scrolling, keyboard controls, reduced motion and WebGL fallback pre
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await login(page);
   const root = page.locator('#buildings-browser');
-  await expect(
-    page.locator('#building-area .area-details'),
-  ).not.toHaveAttribute('open', '');
-  await page.locator('#building-area summary').click();
-  await expect(page.locator('#building-area .area-details')).toHaveAttribute(
-    'open',
-    '',
-  );
-  await page.locator('#building-area summary').click();
+  await expect(page.locator('#planet-development')).toBeVisible();
+  await expect(page.locator('#building-area')).toHaveCount(0);
+  await page.locator('#planet-development').click();
+  await expect(page.locator('#planet-development-details')).toContainText('개발 현황');
+  await page.locator('.modal-close').click();
   const media = root.locator('.detail-media');
-  await expect(root.locator('[data-model-action="rotate"]')).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  );
-  await expect(root.locator('.ship-viewer-canvas')).toHaveCSS(
-    'touch-action',
-    'pan-y',
-  );
-  await root.locator('[data-model-action="right"]').focus();
-  await page.keyboard.press('Enter');
-  await root.locator('[data-model-action="interact"]').click();
-  await expect(root.locator('.ship-viewer-canvas')).toHaveCSS(
-    'touch-action',
-    'none',
-  );
-  await root.locator('[data-model-action="interact"]').click();
-  await expect(root.locator('.ship-viewer-canvas')).toHaveCSS(
-    'touch-action',
-    'pan-y',
-  );
-  for (const button of await root.locator('.model-controls button').all()) {
-    expect((await button.boundingBox()).height).toBeGreaterThanOrEqual(44);
-  }
+  await expect(media).toBeHidden();
+  await expect(root.locator('.ship-viewer-canvas')).toHaveCount(0);
+  await expect(root.locator('.detail-header')).toBeHidden();
+  await expect(root.locator('.detail-section').filter({ hasText: '선행 조건' })).toBeVisible();
+  await expect(root.locator('.detail-section').filter({ hasText: '소요 자원' })).toBeVisible();
+  await root.locator('[data-details]').click();
+  await expect(page.locator('.entity-full-details .detail-header')).toBeVisible();
+  await expect(page.locator('.entity-full-details .spec-list')).toBeVisible();
+  await expect(page.locator('.entity-full-details')).toContainText('소요 시간');
+  await page.locator('.modal-close').click();
+  await expect(root.locator('.detail-header')).toBeHidden();
   await root.locator('.entity-detail').evaluate((el) => (el.scrollTop = 0));
   await page.screenshot({ path: dir + 'building-mobile.png' });
-  await root.locator('[data-command="building"]').scrollIntoViewIfNeeded();
-  await expect(root.locator('[data-command="building"]')).toBeVisible();
+  await root.locator('.entity-row.is-selected [data-command="building"]').scrollIntoViewIfNeeded();
+  await expect(root.locator('.entity-row.is-selected [data-command="building"]')).toBeVisible();
+  // Desktop exposes a compact exhibit beside the title.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(media).toBeVisible();
+  await expect(root.locator('.ship-viewer-canvas')).toHaveCount(1);
+  await expect(root.locator('.model-controls')).toHaveCount(0);
+  expect(await media.evaluate(el => el.getBoundingClientRect().left > el.parentElement.querySelector('.detail-intro').getBoundingClientRect().left)).toBe(true);
   // A lost GL context leaves a still model/description and gameplay buttons available.
   await page.evaluate(async () => {
     const v = window.uiManager.browsers.buildings.viewer;
@@ -241,7 +231,7 @@ test('mobile scrolling, keyboard controls, reduced motion and WebGL fallback pre
     ext.loseContext();
   });
   await expect(root.locator('.model-fallback')).toBeVisible();
-  await expect(root.locator('[data-command="building"]')).toBeEnabled();
+  await expect(root.locator('.entity-row.is-selected [data-command="building"]')).toBeEnabled();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -249,6 +239,8 @@ test('mobile scrolling, keyboard controls, reduced motion and WebGL fallback pre
   ).toBe(true);
   await page.evaluate(() => window.restoreModelContext());
   await expect(root.locator('.model-fallback')).toBeHidden();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(media).toBeHidden();
   await page.locator('.holo-btn[data-view="research"]').click();
   await page
     .locator('#research-browser [data-entity="armorTechnology"]')
@@ -257,7 +249,7 @@ test('mobile scrolling, keyboard controls, reduced motion and WebGL fallback pre
     .locator('#research-browser .entity-detail')
     .evaluate((el) => (el.scrollTop = 0));
   const commandBox = await page
-    .locator('#research-browser [data-command="research"]')
+    .locator('#research-browser .entity-row.is-selected [data-command="research"]')
     .boundingBox();
   const navBox = await page
     .locator('.holo-btn[data-view="research"]')
@@ -347,7 +339,7 @@ test('WebGL unavailable retains descriptions and accepts a real research command
       r.request().method() === 'POST' &&
       r.url().includes('/api/queue/research'),
   );
-  await page.locator('#research-browser [data-command="research"]').click();
+  await page.locator('#research-browser .entity-row.is-selected [data-command="research"]').click();
   expect((await response).status()).toBe(200);
   await completeQueue('research');
   await page.evaluate(() => window.uiManager.syncUserDataFromServer());

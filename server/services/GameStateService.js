@@ -1,3 +1,5 @@
+const { normalizeUserResearch, researchInfrastructure } = require('../utils/userResearch');
+const { initializePopulation, calculatePopulation } = require('../utils/populationEconomy');
 const { calculateArea, productionModifiers, normalizeLegacyArea } = require('../utils/planetArea');
 const { atomic } = require('./transactions');
 const BuildingQueue = require('../models/BuildingQueue');
@@ -18,7 +20,7 @@ function getPlanetForQueue(user, queueItem) {
 }
 
 function getResearchState(user, planet) {
-  return { ...(planet?.research?.toObject ? planet.research.toObject() : planet?.research || {}), terraforming: user.terraformingLevel || 0 };
+  return { ...(user.research?.toObject ? user.research.toObject() : user.research || {}), terraforming: user.terraformingLevel || 0 };
 }
 
 function formatQueueItem(item, now = new Date()) {
@@ -55,6 +57,9 @@ function formatFleetMovement(movement, now = new Date()) {
     formationId: movement.formationId,
     requestId: movement.requestId,
     scoutReportId: movement.scoutReportId,
+    battleReportId: movement.battleReport,
+    recalledAt: movement.recalledAt,
+    returnStartTime: movement.returnStartTime,
     formationName: movement.formationNameAtLaunch || '기존 임무',
     formationEmblem: movement.formationEmblemAtLaunch || '',
     initialFleet: movement.initialFleet,
@@ -63,6 +68,8 @@ function formatFleetMovement(movement, now = new Date()) {
     status: movement.status,
     fleet: movement.fleet,
     cargo: movement.cargo,
+    colonists: movement.colonists || 0,
+    colonistsAtLaunch: movement.colonistsAtLaunch,
     origin: movement.origin,
     destination: movement.destination,
     speed: movement.speed,
@@ -83,8 +90,24 @@ async function activateNextQueues(userId, now = new Date()) {
   }
   let mutated = false;
   for (const group of groups.values()) {
-    if (group.some(item => item.status === 'building')) continue;
-    group[0].status = 'building'; await group[0].save(); mutated = true;
+    let cursor = +now;
+    for (let index = 0; index < group.length; index++) {
+      const item = group[index];
+      // Preserve elapsed work. A cancelled predecessor must not leave a
+      // future start-time hole, including legacy queues already in that state.
+      if (index === 0 && +item.startTime <= +now) {
+        cursor = +item.endTime;
+      } else {
+        const start = cursor;
+        const end = start + item.duration * 1000;
+        if (+item.startTime !== start || +item.endTime !== end) {
+          item.startTime = new Date(start); item.endTime = new Date(end);
+        }
+        cursor = end;
+      }
+      item.status = index === 0 ? 'building' : 'pending';
+      if (item.isModified()) { await item.save(); mutated = true; }
+    }
   }
   return mutated;
 }
@@ -98,11 +121,12 @@ function applyQueueCompletion(user, queueItem) {
     planet.buildings[queueItem.itemId] = queueItem.action === 'demolish' ? queueItem.level : (queueItem.level ?? ((planet.buildings[queueItem.itemId] || 0) + 1));
   } else if (queueItem.type === 'research') {
     if (queueItem.itemId === 'terraforming') {
-      user.terraformingLevel = queueItem.level;
+      user.terraformingLevel = Math.max(user.terraformingLevel || 0, queueItem.level);
+      normalizeUserResearch(user);
       return planet;
     }
-    if (!planet.research) planet.research = {};
-    planet.research[queueItem.itemId] = queueItem.level || ((planet.research[queueItem.itemId] || 0) + 1);
+    user.research[queueItem.itemId] = Math.max(user.research[queueItem.itemId] || 0, queueItem.level || ((user.research[queueItem.itemId] || 0) + 1));
+    normalizeUserResearch(user);
   } else if (queueItem.type === 'ship') {
     if (!planet.fleet) planet.fleet = {};
     planet.fleet[queueItem.itemId] = (planet.fleet[queueItem.itemId] || 0) + (queueItem.count || 1);
@@ -152,7 +176,7 @@ async function settleQueuesForUser(user, config, now = new Date()) {
 
     applyOfflineProduction(planet, config, new Date(claimedItem.endTime));
     // A global research completion is an economy boundary for every planet.
-    if (claimedItem.itemId === 'terraforming') {
+    if (claimedItem.type === 'research') {
       for (const other of user.planets) {
         if (other !== planet) applyOfflineProduction(other, config, new Date(claimedItem.endTime));
       }
@@ -189,7 +213,7 @@ async function buildQueueState(userId, now = new Date(), planetId = null) {
   };
 
   for (const type of ['building', 'research', 'ship', 'defense']) {
-    const typedItems = items.filter((item) => item.type === type && (planetId === null || String(item.planetId) === String(planetId) || item.itemId === 'terraforming'));
+    const typedItems = items.filter((item) => item.type === type && (planetId === null || String(item.planetId) === String(planetId) || type === 'research'));
     if (typedItems.length === 0) continue;
 
     queueState[type] = formatQueueItem(typedItems[0], now);
@@ -210,19 +234,27 @@ async function buildFleetState(userId, now = new Date()) {
 
 function buildPlanetSnapshot(planet, config, terraformLevel, queues, planetId) {
   const storage = calculateStorage(planet, config);
-  const production = calculateProduction(planet, config.serverSpeed || 1, config.resourceSettings || {});
+  const production = calculateProduction(planet, config.serverSpeed || 1, config.resourceSettings || {}, config);
   const snapshot = planet.toObject ? planet.toObject() : { ...planet };
 
   return {
     ...snapshot,
     storage,
-    area: calculateArea(planet, terraformLevel, queues, planetId),
+    energyState: require('../utils/planetEconomy').calculateEnergyState(planet),
+    area: calculateArea(planet, terraformLevel, queues, planetId, config),
+    populationState: calculatePopulation(planet, config),
+    fleetSupport: {
+      ...(planet.$locals?.fleetSupport || { crew: 0, hourly: { food: 0, metal: 0, deuterium: 0 } }),
+      shortages: ['food', 'metal', 'deuterium'].filter(key => (planet.$locals?.fleetSupport?.hourly?.[key] || 0) > 0 && (planet.resources[key] || 0) <= 1e-9 && (production[key] || 0) <= 0),
+    },
+    environment: require('../utils/planetEnvironment').planetEnvironment(planet),
     productionModifiers: productionModifiers(planet),
     production
   };
 }
 
 function buildGameSnapshot(user, { config, now, queueState, fleetMovements, completedQueues = [] }) {
+  normalizeUserResearch(user);
   const currentPlanetIndex = user.currentPlanet || 0;
   const currentPlanet = user.planets[currentPlanetIndex] || user.planets[0];
   const research = getResearchState(user, currentPlanet);
@@ -230,21 +262,27 @@ function buildGameSnapshot(user, { config, now, queueState, fleetMovements, comp
 
   return {
     id: user._id,
+    preferences: { uiMode: user.preferences?.uiMode || "detailed" },
     username: user.username,
     email: user.email,
     isAdmin: user.isAdmin,
+    adminRole: user.adminRole,
     currentPlanet: currentPlanetIndex,
     stateRevision: user.stateRevision || 0,
     wallet: user.wallet?.address ? { address: user.wallet.address, linkedAt: user.wallet.linkedAt } : null,
     entitlements: { emblems: [...(user.entitlements?.emblems || [])], speedupSeconds: user.entitlements?.speedupSeconds || 0 },
-    fleetFormations: (user.fleetFormations || []).map(f => ({ ...f.toObject(), id: f._id })),
+    fleetFormations: (user.fleetFormations || []).map(f => ({ ...f.toObject(), id: f._id, requiredCrew: require('../utils/fleetCrew').requiredCrew(f.ships), upkeep: require('../utils/fleetCrew').upkeep(f.ships, f.crew || 0, config) })),
     unassignedShips: require('../utils/formationRules').availableShips(user, currentPlanet._id),
     planets: user.planets.map((planet, index) => buildPlanetSnapshot(planet, config, user.terraformingLevel || 0, queues, String(index))),
     research,
+    researchInfrastructure: researchInfrastructure(user, queues),
+    areaSettings: { bonusUsableFields: config.areaSettings?.bonusUsableFields ?? 40 },
     queueState,
     fleetMovements,
     completedQueues,
+    exchange: require('../utils/resourceExchange').EXCHANGE,
     serverSpeed: config.serverSpeed || 1,
+    flightSpeedMultiplier: config.fleetSettings?.flightSpeedMultiplier ?? 1,
     serverTime: now,
     defaultStorage: config.resourceSettings?.defaultStorage || { metal: 10000, crystal: 10000, deuterium: 10000 },
     entityConfigRevision: entityConfigService.getRevision()
@@ -258,14 +296,24 @@ async function settleUserStateInternal(userOrId, now = new Date()) {
     if (!user) return null;
 
     const config = await GameConfig.getConfig();
+    if (user.isPirate) {
+      await require('./PirateService').settle(user, config, now);
+      return {user,config,now,queueState:{all:[]},fleetMovements:[],snapshot:buildGameSnapshot(user,{config,now,queueState:{all:[]},fleetMovements:[]})};
+    }
+    normalizeUserResearch(user);
     const activeQueues = await BuildingQueue.find({ userId: user._id, status: { $in: ACTIVE_QUEUE_STATUSES }, applied: false }).lean();
     user.planets.forEach((planet, index) => normalizeLegacyArea(planet, activeQueues, String(index)));
+    require('../utils/fleetCrew').prepareSupport(user, config);
     const completedQueues = await settleQueuesForUser(user, config, now);
 
     for (const planet of user.planets) {
       applyOfflineProduction(planet, config, now);
+      initializePopulation(planet, config);
+      require('../utils/planetEnvironment').initializeEnvironment(planet);
     }
 
+    require('../utils/fleetCrew').initializeCrews(user);
+    require('../utils/fleetCrew').prepareSupport(user, config);
     user.markModified('planets');
     await user.save();
 
@@ -299,7 +347,8 @@ async function settleUsersWithDueQueues(now = new Date()) {
   });
 
   for (const userId of userIds) {
-    await settleUserState(userId, now);
+    try { await settleUserState(userId, now); }
+    catch (error) { console.error('Queue settlement failed:', userId, error.message); }
   }
 }
 

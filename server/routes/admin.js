@@ -1,6 +1,8 @@
 const { afterCommit, transactionalRoute } = require('../services/transactions');
 const express = require('express');
 const router = express.Router();
+const { apiContext, errorHandler } = require('../utils/apiErrors');
+router.use(apiContext, require('../middleware/apiValidation').apiValidation('/api/admin'));
 const { adminMiddleware, superAdminMiddleware } = require('../middleware/admin');
 const GameConfig = require('../models/GameConfig');
 const User = require('../models/User');
@@ -16,7 +18,7 @@ router.get('/config', adminMiddleware, async (req, res) => {
     const config = await GameConfig.getConfig();
     res.json(config);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -29,12 +31,12 @@ router.put('/config', superAdminMiddleware, async (req, res) => {
     const allowedFields = [
       'serverName', 'serverSpeed', 'resourceSettings', 'buildingSettings',
       'researchSettings', 'fleetSettings', 'combatSettings', 'newPlayerSettings',
-      'features', 'maintenanceMode', 'maintenanceMessage'
+      'populationSettings', 'areaSettings', 'features', 'maintenanceMode', 'maintenanceMessage'
     ];
     
     allowedFields.forEach(field => {
       if (req.body[field] !== undefined) {
-        config[field] = req.body[field];
+        config[field] = field === 'fleetSettings' ? { ...config.fleetSettings.toObject(), ...req.body[field] } : req.body[field];
       }
     });
     
@@ -48,7 +50,7 @@ router.put('/config', superAdminMiddleware, async (req, res) => {
     
     res.json({ message: 'Configuration updated', config });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -73,7 +75,7 @@ router.post('/speed', superAdminMiddleware, async (req, res) => {
     
     res.json({ message: `Server speed set to ${speed}x`, speed });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -82,9 +84,10 @@ router.get('/stats', adminMiddleware, async (req, res) => {
   try {
     const stats = {
       users: {
-        total: await User.countDocuments(),
-        online: await User.countDocuments({ isOnline: true }),
+        total: await User.countDocuments({isPirate:{$ne:true}}),
+        online: await User.countDocuments({ isPirate:{$ne:true}, isOnline: true }),
         today: await User.countDocuments({
+          isPirate:{$ne:true},
           lastLogin: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
         })
       },
@@ -106,7 +109,7 @@ router.get('/stats', adminMiddleware, async (req, res) => {
     
     res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -115,7 +118,7 @@ router.get('/users', adminMiddleware, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
-    const search = req.query.search || '';
+    const search = (req.query.search || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
     const query = search ? {
       $or: [
@@ -124,6 +127,10 @@ router.get('/users', adminMiddleware, async (req, res) => {
       ]
     } : {};
     
+    if (req.query.kind !== undefined && !['human','bot','all'].includes(req.query.kind)) throw require('../utils/apiErrors').apiError(400,'INVALID_REQUEST','사용자 유형 필터가 올바르지 않습니다.');
+    query.isPirate = {$ne:true};
+    if (req.query.kind === 'human') query.isAiPlayer = {$ne:true};
+    if (req.query.kind === 'bot') query.isAiPlayer = true;
     const users = await User.find(query)
       .select('-password')
       .sort({ createdAt: -1 })
@@ -142,7 +149,7 @@ router.get('/users', adminMiddleware, async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -153,31 +160,38 @@ router.get('/users/:userId', adminMiddleware, async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json(user);
+    const settled = await settleUserState(user._id);
+    if (!settled) return res.status(404).json({ error: 'User not found' });
+    const detail = settled.user.toObject();
+    delete detail.password;
+    settled.snapshot.planets.forEach(planet => { planet.unassignedShips = require('../utils/formationRules').availableShips(settled.user, planet._id); });
+    res.json({ ...detail, gameSnapshot: settled.snapshot, gameCatalog: entityConfigService.toPublicCatalog() });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
 // Update user (ban, resources, etc)
 router.put('/users/:userId', superAdminMiddleware, transactionalRoute(async (req, res) => {
   try {
+    await require('../services/transactions').requireTransactions();
+    await require('../models/SystemLock').findOneAndUpdate({ _id: 'admin-governance' }, { $inc: { revision: 1 } }, { upsert: true });
     const user = await User.findById(req.params.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
     const update = normalizeAdminUserUpdate(req.body, user.planets.length);
-    const willRemainSuperAdmin = (update.isAdmin ?? user.isAdmin) &&
+    const willRemainSuperAdmin = !(update.isBanned ?? user.isBanned) && (update.isAdmin ?? user.isAdmin) &&
       (update.adminRole === undefined ? user.adminRole : update.adminRole) === 'superadmin';
     if (user.isAdmin && user.adminRole === 'superadmin' && !willRemainSuperAdmin) {
       const anotherSuperAdmin = await User.exists({
         _id: { $ne: user._id },
-        isAdmin: true,
+        isAdmin: true, isBanned: false,
         adminRole: 'superadmin'
       });
       if (!anotherSuperAdmin) {
-        return res.status(400).json({ error: 'At least one superadmin must remain' });
+        return res.status(409).json({ error: 'At least one superadmin must remain', code: 'LAST_SUPERADMIN' });
       }
     }
     ['isBanned', 'banReason', 'isAdmin', 'adminRole'].forEach((field) => {
@@ -195,6 +209,7 @@ router.put('/users/:userId', superAdminMiddleware, transactionalRoute(async (req
     
     // Sync to user UI via socket if online
     const io = req.app.get('io');
+    if (user.isBanned) afterCommit(() => io?.in?.(`user:${user._id}`)?.disconnectSockets?.(true));
     if (user.socketId) {
       try {
         const settled = await settleUserState(user._id, new Date());
@@ -204,20 +219,25 @@ router.put('/users/:userId', superAdminMiddleware, transactionalRoute(async (req
       }
     }
     
-    res.json({ message: 'User updated', user });
+    const publicUser = user.toObject(); delete publicUser.password;
+    res.json({ message: 'User updated', user: publicUser });
   } catch (error) {
-    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
-    res.status(error.statusCode || 500).json({ error: error.message });
+    throw error;
   }
 }));
 
 // Delete user
 router.delete('/users/:userId', superAdminMiddleware, async (req, res) => {
   try {
+    const target = await User.findById(req.params.userId);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (target.isAdmin && target.adminRole === 'superadmin') return res.status(409).json({ error: '최고 관리자 계정은 권한을 변경한 뒤 삭제해 주세요.', code: 'LAST_SUPERADMIN' });
     await User.findByIdAndDelete(req.params.userId);
+    await require('../models/AiPlayer').deleteOne({ userId: req.params.userId });
+    req.app.get('io')?.in?.(`user:${req.params.userId}`)?.disconnectSockets?.(true);
     res.json({ message: 'User deleted' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -281,7 +301,7 @@ router.post('/maintenance', superAdminMiddleware, async (req, res) => {
     
     res.json({ message: `Maintenance mode ${enabled ? 'enabled' : 'disabled'}` });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -299,7 +319,7 @@ router.post('/announcement', adminMiddleware, async (req, res) => {
     
     res.json({ message: 'Announcement sent' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -309,7 +329,7 @@ router.get('/logs', adminMiddleware, async (req, res) => {
     // In production, this would query a logs collection
     res.json({ logs: [] });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -323,7 +343,7 @@ router.post('/users/:userId/resources', adminMiddleware, transactionalRoute(asyn
       return res.status(404).json({ error: 'User not found' });
     }
     
-    const validResources = ['metal', 'crystal', 'deuterium', 'energy'];
+    const validResources = ['metal', 'crystal', 'deuterium', 'food'];
     if (!validResources.includes(resourceType)) {
       return res.status(400).json({ error: 'Invalid resource type' });
     }
@@ -333,6 +353,7 @@ router.post('/users/:userId/resources', adminMiddleware, transactionalRoute(asyn
       return res.status(404).json({ error: 'Planet not found' });
     }
     
+    if (!Number.isSafeInteger(Math.ceil(planet.resources[resourceType] || 0) + amount)) throw require('../utils/apiErrors').apiError(400, 'INVALID_REQUEST', '자원 수량이 허용 범위를 초과합니다.');
     // Add resources
     planet.resources[resourceType] = (planet.resources[resourceType] || 0) + amount;
     
@@ -345,8 +366,7 @@ router.post('/users/:userId/resources', adminMiddleware, transactionalRoute(asyn
       resources: planet.resources
     });
   } catch (error) {
-    if (error.hasErrorLabel?.('TransientTransactionError')) throw error;
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 }));
 
@@ -365,7 +385,7 @@ router.get('/entity-config', adminMiddleware, async (req, res) => {
     const result = entityConfigService.listByType(type).map((definition) => entityConfigService.toAdminRow(definition));
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -405,7 +425,7 @@ router.put('/entity-config/:type/:id', superAdminMiddleware, async (req, res) =>
     });
     res.json({ message: 'Entity config updated', config: entityConfigService.toAdminRow(definition) });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -424,7 +444,7 @@ router.post('/entity-config/bulk', superAdminMiddleware, async (req, res) => {
     await entityConfigService.bulkUpdate(
       updates.map((update) => {
         if (!update.entityType || !validTypes.includes(update.entityType)) {
-          throw new Error(`Invalid entity type "${update.entityType}" for entity "${update.entityId}"`);
+          throw require('../utils/apiErrors').apiError(400, 'INVALID_ENTITY', `Invalid entity type "${update.entityType}" for entity "${update.entityId}"`);
         }
         
         // Construct a normalized update object that the service understands
@@ -451,7 +471,7 @@ router.post('/entity-config/bulk', superAdminMiddleware, async (req, res) => {
     console.log(`[AdminAPI] Bulk update successful. Updated ${updates.length} configs.`);
     res.json({ message: `Updated ${updates.length} entity configs`, revision: entityConfigService.getRevision() });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -502,7 +522,7 @@ router.post('/entity-config/:type', superAdminMiddleware, async (req, res) => {
       revision: entityConfigService.getRevision()
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -523,8 +543,10 @@ router.post('/entity-config/reset/:type', superAdminMiddleware, async (req, res)
     });
     res.json({ message: `Reset all ${type} configs to defaults`, revision: entityConfigService.getRevision() });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    throw error;
   }
 });
 
+router.use(require('./aiAdmin'));
+router.use(errorHandler);
 module.exports = router;

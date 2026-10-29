@@ -18,6 +18,8 @@ module.exports = [
     buildTime: 120,
     requires: { buildings: { shipyard: 2 }, research: { combustionDrive: 2 } },
     stats: {
+      crew: 1,
+      upkeep: { metal: 0.10, deuterium: 0.05 },
       hull: 4000,
       shield: 10,
       attack: 5,
@@ -40,6 +42,8 @@ module.exports = [
     buildTime: 300,
     requires: { buildings: { shipyard: 4 }, research: { combustionDrive: 6 } },
     stats: {
+      crew: 2,
+      upkeep: { metal: 0.20, deuterium: 0.10 },
       hull: 12000,
       shield: 25,
       attack: 5,
@@ -62,6 +66,8 @@ module.exports = [
     buildTime: 600,
     requires: { buildings: { shipyard: 4 }, research: { impulseDrive: 3 } },
     stats: {
+      crew: 0,
+      upkeep: { metal: 0.00, deuterium: 0.00 },
       hull: 30000,
       shield: 100,
       attack: 50,
@@ -87,6 +93,8 @@ module.exports = [
       research: { combustionDrive: 6, shieldingTechnology: 2 }
     },
     stats: {
+      crew: 2,
+      upkeep: { metal: 0.20, deuterium: 0.10 },
       hull: 16000,
       shield: 10,
       attack: 1,
@@ -112,6 +120,8 @@ module.exports = [
       research: { combustionDrive: 3, espionageTechnology: 2 }
     },
     stats: {
+      crew: 0,
+      upkeep: { metal: 0.00, deuterium: 0.00 },
       hull: 1000,
       shield: 0,
       attack: 0,
@@ -129,11 +139,13 @@ module.exports = [
     name: '태양광 인공위성',
     icon: '🛰️',
     category: 'civil',
-    description: '에너지 생산 (행성 위치에 따라 변동)',
+    description: '행성 궤도에 머물며 에너지를 생산합니다. 1기당 발전량은 (행성 최고 온도 + 160) ÷ 6의 내림값이며, 따뜻한 행성일수록 발전량이 높습니다. 서버 속도 배율은 적용되지 않습니다.',
     cost: { metal: 0, crystal: 2000, deuterium: 500 },
     buildTime: 180,
     requires: { buildings: { shipyard: 1 } },
     stats: {
+      crew: 0,
+      upkeep: { metal: 0.00, deuterium: 0.00 },
       hull: 2000,
       shield: 10,
       attack: 1,
@@ -156,6 +168,8 @@ module.exports = [
     buildTime: 120,
     requires: { buildings: { shipyard: 1 }, research: { combustionDrive: 1 } },
     stats: {
+      crew: 1,
+      upkeep: { metal: 0.10, deuterium: 0.05 },
       hull: 4000,
       shield: 10,
       attack: 50,
@@ -181,6 +195,8 @@ module.exports = [
       research: { impulseDrive: 2, armorTechnology: 2 }
     },
     stats: {
+      crew: 2,
+      upkeep: { metal: 0.20, deuterium: 0.10 },
       hull: 10000,
       shield: 25,
       attack: 150,
@@ -203,6 +219,8 @@ module.exports = [
     buildTime: 600,
     requires: { buildings: { shipyard: 5 }, research: { impulseDrive: 4, ionTechnology: 2 } },
     stats: {
+      crew: 4,
+      upkeep: { metal: 0.40, deuterium: 0.20 },
       hull: 27000,
       shield: 50,
       attack: 400,
@@ -225,6 +243,8 @@ module.exports = [
     buildTime: 1200,
     requires: { buildings: { shipyard: 7 }, research: { hyperspaceDrive: 4 } },
     stats: {
+      crew: 8,
+      upkeep: { metal: 0.80, deuterium: 0.40 },
       hull: 60000,
       shield: 200,
       attack: 1000,
@@ -250,6 +270,8 @@ module.exports = [
       research: { hyperspaceTechnology: 5, laserTechnology: 12 }
     },
     stats: {
+      crew: 8,
+      upkeep: { metal: 0.80, deuterium: 0.40 },
       hull: 70000,
       shield: 400,
       attack: 700,
@@ -283,6 +305,8 @@ module.exports = [
       research: { impulseDrive: 6, plasmaTechnology: 5 }
     },
     stats: {
+      crew: 6,
+      upkeep: { metal: 0.60, deuterium: 0.30 },
       hull: 75000,
       shield: 500,
       attack: 1000,
@@ -315,6 +339,8 @@ module.exports = [
       research: { hyperspaceDrive: 6, hyperspaceTechnology: 5 }
     },
     stats: {
+      crew: 10,
+      upkeep: { metal: 1.00, deuterium: 0.50 },
       hull: 110000,
       shield: 500,
       attack: 2000,
@@ -340,6 +366,8 @@ module.exports = [
       research: { hyperspaceDrive: 7, gravitonTechnology: 1 }
     },
     stats: {
+      crew: 50,
+      upkeep: { metal: 5.00, deuterium: 2.50 },
       hull: 9000000,
       shield: 50000,
       attack: 200000,

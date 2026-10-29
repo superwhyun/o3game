@@ -1,4 +1,5 @@
-const AREA_SCALE_KM = 800; // 12,800km home: 256 total, 102 initially usable.
+const AREA_SCALE_KM = 800; // 12,800km home: 256 total, 102 terrain fields + 40 bonus at 40%.
+const BONUS_USABLE_FIELDS = 40;
 const TERRAFORMING_PERCENT_PER_LEVEL = 2;
 const TERRAFORMING_MAX_LEVEL = 30;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -9,16 +10,19 @@ function totalArea(planet) {
 function usedArea(planet) {
   return Object.values(object(planet.buildings)).reduce((sum, level) => sum + Math.max(0, Number(level) || 0), 0);
 }
-function calculateArea(planet, terraformLevel = 0, queues = [], planetId = '0') {
+function calculateArea(planet, terraformLevel = 0, queues = [], planetId = '0', config = {}) {
   const total = totalArea(planet);
   const baseUsablePercent = clamp(planet.baseUsablePercent ?? 40, 0, 100);
   const usablePercent = Math.min(100, baseUsablePercent + Math.max(0, terraformLevel) * TERRAFORMING_PERCENT_PER_LEVEL);
-  const usable = Math.floor(total * usablePercent / 100 + 1e-9);
+  const terrainUsable = Math.floor(total * usablePercent / 100 + 1e-9);
+  const configuredBonus = config.areaSettings?.bonusUsableFields ?? BONUS_USABLE_FIELDS;
+  const bonusUsable = Math.min(configuredBonus, total - terrainUsable);
+  const usable = terrainUsable + bonusUsable;
   const used = usedArea(planet);
   const reserved = queues.filter(q => q.type === 'building' && q.action !== 'demolish'
     && String(q.planetId ?? '0') === String(planetId) && !q.applied
     && ['building', 'pending'].includes(q.status)).length;
-  return { total, baseUsablePercent, usablePercent, usable, used, reserved,
+  return { total, baseUsablePercent, usablePercent, bonusUsable, usable, used, reserved,
     available: Math.max(0, usable - used - reserved), overCapacity: used + reserved > usable };
 }
 function productionModifiers(planet) {
@@ -39,7 +43,8 @@ function createPlanetEnvironment(random = Math.random) {
   const maxTemp = minTemp + 40;
   const average = (minTemp + maxTemp) / 2;
   const baseUsablePercent = average < -30 ? 40 : average > 50 ? 44 : 50;
-  return { minTemp, maxTemp, baseUsablePercent, traits: minerals };
+  return { minTemp, maxTemp, baseUsablePercent, traits: minerals,
+    environmentType: require('./planetEnvironment').inferEnvironment({ minTemp, maxTemp }) };
 }
 function normalizeLegacyArea(planet, queues = [], planetId = '0') {
   if (planet.areaVersion === 1) return false;
@@ -60,5 +65,5 @@ function planetIndex(user, value = user.currentPlanet ?? 0) {
   }
   return index;
 }
-module.exports = { AREA_SCALE_KM, TERRAFORMING_PERCENT_PER_LEVEL, TERRAFORMING_MAX_LEVEL,
+module.exports = { AREA_SCALE_KM, BONUS_USABLE_FIELDS, TERRAFORMING_PERCENT_PER_LEVEL, TERRAFORMING_MAX_LEVEL,
   totalArea, usedArea, calculateArea, productionModifiers, createPlanetTraits, createPlanetEnvironment, normalizeLegacyArea, planetIndex };

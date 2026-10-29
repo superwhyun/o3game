@@ -28,7 +28,7 @@ test('battles leave ship wreckage that recyclers collect first come, first serve
 
     // --- a real attack produces a field at the defender's planet ---------------------
     let slot = 0;
-    const make = (name, planetNo, fleet, extra = {}) => User.create({ username: name, email: `${name}@test.invalid`, password: randomUUID(), planets: [{ galaxy: 1, system: 1, planet: planetNo, fleet, resources: { metal: 1e7, crystal: 1e7, deuterium: 1e7 }, ...extra }] });
+    const make = (name, planetNo, fleet, extra = {}) => User.create({ username: name, email: `${name}@test.invalid`, password: randomUUID(), planets: [{ galaxy: 1, system: 1, planet: planetNo, fleet, resources: { metal: 1e7, crystal: 1e7, deuterium: 1e7, food: 1e7 }, population: { version: 1, count: 5000, baseHousing: 5000, baseFood: 5000, baseCulture: 100, foodCapacity: 100000, growthProgress: 0, starvationProgress: 0 }, ...extra }] });
     const formation = async (user, ships) => {
       const created = await forms.change(user._id, 'create', null, { originPlanetId: user.planets[0]._id });
       await forms.change(user._id, 'update', created.formationId, { expectedRevision: 1, name: `함대${++slot}`, ships });
@@ -109,7 +109,7 @@ test('many recyclers split a small field in arrival order and extra ones come ba
 
     const launches = [];
     for (let i = 0; i < 5; i++) {
-      const user = await User.create({ username: `r${i}`, email: `r${i}@test.invalid`, password: randomUUID(), planets: [{ galaxy: 1, system: 2 + i, planet: 1, fleet: { recycler: 1 }, resources: { metal: 0, crystal: 0, deuterium: 0 } }] });
+      const user = await User.create({ username: `r${i}`, email: `r${i}@test.invalid`, password: randomUUID(), planets: [{ galaxy: 1, system: 2 + i, planet: 1, fleet: { recycler: 1 }, resources: { metal: 1e6, crystal: 0, deuterium: 1e6, food: 1e7 }, population: { version: 1, count: 5000, baseHousing: 5000, baseFood: 5000, baseCulture: 100, foodCapacity: 100000, growthProgress: 0, starvationProgress: 0 } }] });
       const created = await forms.change(user._id, 'create', null, { originPlanetId: user.planets[0]._id });
       await forms.change(user._id, 'update', created.formationId, { expectedRevision: 1, name: `수확${i}`, ships: { recycler: 1 } });
       launches.push(await fleets.launch(user._id, { requestId: randomUUID(), mission: 'recycle', formationId: String(created.formationId), originPlanetId: String(user.planets[0]._id), expectedRevision: 2, destination: { galaxy: 1, system: 1, planet: 7 }, cargo: {} }));

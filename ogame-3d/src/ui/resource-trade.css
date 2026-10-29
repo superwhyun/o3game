@@ -1,0 +1,39 @@
+.trade-content { padding:24px; }
+.exchange-form { max-width:740px; margin:0 auto; display:grid; gap:14px; }
+.exchange-context { font-size:12px; color:var(--text-faint); }
+.exchange-pair { display:grid; grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr); align-items:center; gap:12px; }
+.exchange-card { min-width:0; display:grid; gap:8px; padding:20px; border:1px solid var(--line); border-radius:14px; background:linear-gradient(150deg,#152133,#0b121e); }
+.exchange-card > label { color:var(--text-faint); font-size:11px; }
+.exchange-resource { display:flex; align-items:center; gap:8px; }
+.exchange-resource > span { color:var(--gold-bright); font-size:18px; }
+.exchange-resource select { min-width:0; flex:1; color:var(--text); background:transparent; border:0; border-bottom:1px solid var(--line); font-size:15px; height:38px; padding:0; }
+.exchange-resource option { background:var(--ink-1); }
+.exchange-card input[type=number], .exchange-received { width:100%; min-width:0; height:50px; font-size:28px; color:var(--text); font-variant-numeric:tabular-nums; border:0; background:transparent; padding:0; }
+.exchange-received { display:flex; align-items:center; color:var(--gold-bright); }
+.exchange-card input:focus-visible { outline:0; box-shadow:0 1px 0 var(--gold-dim); }
+.exchange-card small, .exchange-card p { margin:0; color:var(--text-faint); font-size:11px; }
+.exchange-card p { color:var(--text-dim); }
+.exchange-swap { border:1px solid var(--line); background:var(--ink-1); border-radius:50%; height:42px; width:42px; font-size:20px; color:var(--text-dim); cursor:pointer; }
+.exchange-swap:hover { color:var(--gold-bright); border-color:var(--gold-dim); }
+.exchange-slider-heading { display:flex; align-items:center; justify-content:space-between; margin-top:10px; }
+.exchange-slider-heading label { color:var(--text-dim); font-size:12px; }
+.exchange-slider-heading output { margin-left:8px; color:var(--gold-bright); font-variant-numeric:tabular-nums; }
+.exchange-max { color:var(--text-dim); border:0; background:none; padding:6px 0 6px 10px; font-size:12px; cursor:pointer; }
+.exchange-form > input[type=range] { width:100%; height:32px; accent-color:var(--gold); padding:0; margin:0; touch-action:pan-y; }
+.exchange-limit { color:var(--text-faint); font-size:11px; }
+.exchange-form #trade-quote { margin:0; min-height:20px; font-size:12px; color:var(--text-dim); }
+.exchange-form #trade-submit { width:100%; min-height:46px; border-radius:8px; }
+.exchange-form #trade-message { margin:0; font-size:12px; color:var(--text-dim); }
+.exchange-form button:disabled { opacity:.4; cursor:default; }
+@media (max-width:700px) {
+  .trade-content { padding:16px; }
+  .exchange-pair { grid-template-columns:minmax(0,1fr) 30px minmax(0,1fr); gap:6px; }
+  .exchange-card { padding:12px 10px; border-radius:10px; gap:6px; }
+  .exchange-card input[type=number], .exchange-received { font-size:22px; height:42px; }
+  .exchange-resource { gap:4px; }
+  .exchange-resource select { font-size:13px; }
+  .exchange-resource > span { font-size:13px; }
+  .exchange-swap { height:30px; width:30px; font-size:17px; }
+  .exchange-max { min-height:36px; }
+  .exchange-card small { min-height:30px; line-height:1.5; }
+}

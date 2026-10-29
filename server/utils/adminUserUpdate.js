@@ -1,5 +1,5 @@
 const ADMIN_ROLES = new Set(['superadmin', 'moderator', 'support']);
-const RESOURCE_TYPES = new Set(['metal', 'crystal', 'deuterium', 'energy']);
+const RESOURCE_TYPES = new Set(['metal', 'crystal', 'deuterium', 'food']);
 
 const validationError = (message) => Object.assign(new Error(message), { statusCode: 400 });
 

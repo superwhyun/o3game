@@ -44,7 +44,7 @@ async function main() {
   const make = async (username, planet, extra = {}) => {
     const user = await User.create({
       username, email: `${username}@e2e.invalid`, password: randomUUID(), lastLogin: new Date(),
-      planets: [{ name: `${username}-home`, galaxy: 1, system: 1, planet, resources: { metal: 5e6, crystal: 5e6, deuterium: 5e6 }, fleet: { cruiser: 60, recycler: 4, colonyShip: 1, smallCargo: 5 }, ...(extra.planet || {}) }],
+      planets: [{ name: `${username}-home`, galaxy: 1, system: 1, planet, resources: { metal: 5e6, crystal: 5e6, deuterium: 5e6, food: 1e7 }, population: { version: 1, count: 5000, baseHousing: 5000, baseFood: 5000, baseCulture: 100, foodCapacity: 100000, growthProgress: 0, starvationProgress: 0 }, fleet: { cruiser: 60, recycler: 4, colonyShip: 1, smallCargo: 5 }, ...(extra.planet || {}) }],
       ...(extra.user || {})
     });
     return { id: String(user._id), username, token: sign(user), planetId: String(user.planets[0]._id) };

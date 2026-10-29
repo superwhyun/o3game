@@ -118,7 +118,7 @@ test('calculateFleetProfile derives cargo capacity and the slowest valid ship sp
 test('calculateTravelSeconds returns a finite positive time for valid mission inputs', () => {
   assert.equal(
     calculateTravelSeconds({ galaxy: 1, system: 1, planet: 1 }, { galaxy: 1, system: 1, planet: 2 }, 5000, 100),
-    70
+    517
   );
   assert.throws(
     () => calculateTravelSeconds({ galaxy: 1, system: 1, planet: 1 }, { galaxy: 1, system: 1, planet: 2 }, 0, 100),

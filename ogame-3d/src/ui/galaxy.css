@@ -167,8 +167,6 @@
   opacity: 1;
 }
 
-.slot-planet.planet-own { fill: url(#planet-own); }
-.slot-planet.planet-other { fill: url(#planet-other); }
 
 .slot-atmo {
   fill: none;
@@ -458,6 +456,24 @@
  .traffic-external text { font-size:32px; }
  .traffic-token { r:8px; }
 }
+
+/* Names learned from reconnaissance keep the foreign-planet color. */
+.slot-other .slot-label { fill: #9fc1ea; }
+.slot-empty .slot-atmo { stroke: #99c3ad; }
+.legend-surveyed::before { background: #668c7e; }
+.orbit-legend { flex-wrap: wrap; }
+
+/* The chart and its side column scroll independently on desktop. */
+@media (min-width: 901px) {
+  .orbit-side { overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; }
+}
+@media (max-width: 900px) {
+  .orbit-side { overflow: visible; }
+}
+
+.slot-pirate .slot-label { fill: #e69b70; }
+
+.legend-pirate::before { background: #c76a45; }
 
 /* Event monsters and battle wreckage on the orbit charts */
 .slot-monster .monster-aura { fill: none; stroke: #d0644f; stroke-width: 1.5; stroke-dasharray: 3 4; opacity: 0.8; }

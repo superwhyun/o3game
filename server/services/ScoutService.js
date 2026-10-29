@@ -1,6 +1,7 @@
 const { createHash } = require("node:crypto");
 const mongoose = require("mongoose");
 const User = require("../models/User");
+const GameConfig = require("../models/GameConfig");
 const Movement = require("../models/FleetMovement");
 const Report = require("../models/ScoutReport");
 const entities = require("./EntityConfigService");
@@ -102,12 +103,14 @@ async function launch(userId, input) {
         fail("목표 좌표의 점령 정보가 충돌합니다.", 409, "TARGET_CONFLICT");
       const speed = entities.getEntity("ship", "espionageProbe")?.stats?.speed;
       if (!(speed > 0)) fail("정찰선 이동 성능을 확인할 수 없습니다.", 503);
+      const config = await GameConfig.getConfig();
       const now = new Date();
       const seconds = calculateTravelSeconds(
         coords(planet),
         order.destination,
         speed,
         100,
+        { serverSpeed: config.serverSpeed, flightSpeedMultiplier: config.fleetSettings?.flightSpeedMultiplier },
       );
       const movement = new Movement({
         userId: user._id,
@@ -234,7 +237,8 @@ async function processMovement(id, now = new Date()) {
       report.targetPlanetId = planet._id;
       report.targetUserId = target._id;
       report.targetName = planet.name;
-      report.targetCommander = target.username;
+      report.targetCommander = target.isPirate ? '해적' : target.username;
+      if(target.isPirate) report.pirateLevel = target.pirate.level;
     }
     if (report.outcome === "occupied") {
       const a =
@@ -258,7 +262,8 @@ async function processMovement(id, now = new Date()) {
     }
     if (["empty", "occupied", "friendly"].includes(report.outcome)) {
       const { environmentOf, surveyOf } = require("../utils/colonizationRules");
-      report.sections = { ...report.sections, environment: surveyOf(planet || environmentOf(movement.destination), owner.terraformingLevel || 0) };
+      const config = await GameConfig.getConfig();
+      report.sections = { ...report.sections, environment: surveyOf(planet || environmentOf(movement.destination), owner.terraformingLevel || 0, config) };
     }
     await report.save();
     movement.scoutReportId = report._id;

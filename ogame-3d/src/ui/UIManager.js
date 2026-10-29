@@ -1,3 +1,18 @@
+import { ResourceTradeView } from './views/ResourceTradeView.js';
+import './resource-trade.css';
+import { AccountSettingsView } from './views/AccountSettingsView.js';
+import { applyDisplayMode, renderGraphics } from './views/displayModes.js';
+import { RecordHistoryView } from './views/RecordHistoryView.js';
+import { DirectColonyView } from './views/DirectColonyView.js';
+import { AdminUserDetailsView } from './views/AdminUserDetailsView.js';
+import { AiPlayersView } from './views/AiPlayersView.js';
+import { battleOutcome, reportIsRead } from './views/battleReports.js';
+import { ImprovementRequestsView } from './views/ImprovementRequestsView.js';
+import { renderAreaWarning } from './views/areaWarning.js';
+import { createRequestId } from '../utils/requestId.js';
+import './population.css';
+import './command-controls.css';
+import { renderPopulationDetails, POPULATION_SETTING_LABELS } from './views/populationDetails.js';
 import './planet-area.css';
 import { ScoutController } from './views/ScoutController.js';
 import { ScoutReportsView } from './views/ScoutReportsView.js';
@@ -6,6 +21,7 @@ import './entity-model.css';
 import { stopInspector, disposeInspector } from '../three/entities/ModelViewer.js';
 import { disposeThumbnails } from '../three/entities/ModelThumbnails.js';
 import { io } from 'socket.io-client';
+import { SERVER_URL } from '../services/serverUrl.js';
 import { FleetFormationView } from './views/FleetFormationView.js';
 import { MarketView } from './views/MarketView.js';
 import { MonsterBoard } from './views/MonsterBoard.js';
@@ -27,7 +43,7 @@ import { getShipThumbnail } from '../three/ships/ShipThumbnails.js';
 import { resolveModelSpec } from '../three/ships/ShipModelFactory.js';
 
 const BROWSER_REFRESH_MS = 4000;
-const MAX_NOTIFICATIONS = 4;
+const MAX_NOTIFICATIONS = 1;
 // Calendar flavor: 2026 AD is shown as 宇宙暦 796.
 const SPACE_ERA_OFFSET = 1230;
 
@@ -51,6 +67,15 @@ export class UIManager {
       defense: null
     }; // Track each queue type separately
     this.lastPendingQueue = []; // Store the most recent pending items
+    this.populationRefreshTimer = setInterval(async () => {
+      if (document.hidden || !apiService.isAuthenticated() || this.populationRefreshing) return;
+      this.populationRefreshing = true;
+      try {
+        await this.syncUserDataFromServer({ minAge: 30000 });
+
+      }
+      finally { this.populationRefreshing = false; }
+    }, 30000);
     this.initialized = false; // Prevent duplicate init
     this.init();
   }
@@ -63,6 +88,11 @@ export class UIManager {
     this.initialized = true;
     
     this.bindElements();
+    if (window.matchMedia('(max-width: 900px)').matches) {
+      document.querySelectorAll('.panel-queue-section').forEach(section => {
+        section.open = false;
+      });
+    }
     this.bindEvents();
     this.setupGameStateListeners();
     await this.loadQueueOnce(); // Load once initially
@@ -153,6 +183,7 @@ export class UIManager {
   
   updateUserDisplay(user) {
     if (!this.userSection || !user) return;
+    this.updateImprovementNavigation(user.isAdmin);
     
     this.userSection.innerHTML = `
       <div class="user-info">
@@ -173,13 +204,31 @@ export class UIManager {
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') this.closeSpeedupMenu(); });
   }
   
+  updateImprovementNavigation(isAdmin) {
+    const label = isAdmin ? '개선 요청' : '개선 제안';
+    document.querySelector('#improvements-btn .label').textContent = label;
+    document.getElementById('improvements-title').textContent = label;
+  }
+
   // Sync user data from server (prevents client-side cheating)
-  async syncUserDataFromServer() {
+  syncUserDataFromServer({ minAge = 0 } = {}) {
+    if (!apiService.isAuthenticated() || apiService.rateLimitedUntil > Date.now()) return Promise.resolve();
+    const token = apiService.token;
+    if (this.userSyncToken === token && this.userSyncPromise) return this.userSyncPromise;
+    if (this.lastUserSyncToken === token && Date.now() - (this.lastUserSyncAt || 0) < minAge) return Promise.resolve();
+    this.userSyncToken = token;
+    const request = this.performUserSync(token);
+    this.userSyncPromise = request;
+    const clear = () => { if (this.userSyncPromise === request) this.userSyncPromise = null; };
+    request.then(clear, clear);
+    return request;
+  }
+
+  async performUserSync(token) {
     try {
       // Fetch latest user data from server
       const userData = await apiService.getCurrentUser();
-      console.log('[syncUserDataFromServer] Raw userData:', userData);
-      console.log('[syncUserDataFromServer] planets:', userData.planets);
+      if (apiService.token !== token) return;
       
       // Entity catalog drives every list; refetch when the server revision changes.
       if (!catalog.loaded || (userData.entityConfigRevision && userData.entityConfigRevision !== catalog.revision)) {
@@ -192,14 +241,18 @@ export class UIManager {
         this.hydrateQueueState(userData.queueState);
       }
       this.refreshSyncedViews();
+      this.lastUserSyncToken = token;
+      this.lastUserSyncAt = Date.now();
+      void this.syncBattleReports(false, { minAge: 60000 });
       
       // If admin panel is open, refresh stats to sync speed, etc.
-      if (this.currentView === 'admin') {
+      if (this.currentView === 'admin' && document.getElementById('tab-dashboard')?.classList.contains('active')) {
         this.loadAdminStatistics();
       }
       
       console.log('[syncUserDataFromServer] Synced. GameState resources:', gameState.resources);
 
+      this.updateImprovementNavigation(userData.isAdmin);
       // 🔐 Check Admin access again after sync
       const adminBtn = document.getElementById('admin-btn');
       if (adminBtn) {
@@ -215,6 +268,7 @@ export class UIManager {
   }
 
   refreshSyncedViews() {
+    applyDisplayMode(gameState.preferences?.uiMode);
     this.updateResourceDisplay();
     this.updatePlanetInfo();
     this.renderBuildingSwiper();
@@ -249,6 +303,26 @@ export class UIManager {
     }
     this._elementsBound = true;
     console.log('[bindElements] Binding DOM elements');
+    const controls = document.getElementById('command-controls');
+    const sidebar = document.querySelector('.holo-sidebar.left');
+    const userMenu = document.getElementById('user-section');
+    const accountFooter = document.querySelector('.sidebar-account');
+    const header = document.querySelector('.holo-header');
+    const narrowLayout = window.matchMedia('(max-width: 1200px)');
+    const placeControls = () => {
+      if (!controls || !sidebar || !header) return;
+      // The sidebar becomes bottom navigation on small screens.
+      if (narrowLayout.matches) {
+        header.append(controls);
+        if (userMenu) controls.append(userMenu);
+      } else {
+        sidebar.prepend(controls);
+        if (userMenu && accountFooter) accountFooter.append(userMenu);
+      }
+    };
+    placeControls();
+    narrowLayout.addEventListener('change', placeControls);
+
     
     this.resourceElements = {
       metal: {
@@ -284,6 +358,11 @@ export class UIManager {
       fleet: document.getElementById('fleet-panel'),
       combat: document.getElementById('combat-panel'),
       market: document.getElementById('market-panel'),
+      trade: document.getElementById('trade-panel'),
+      battleRecords: document.getElementById('battle-records-panel'),
+      scoutRecords: document.getElementById('scout-records-panel'),
+      improvements: document.getElementById('improvements-panel'),
+      accountSettings: document.getElementById('account-settings-panel'),
       admin: document.getElementById('admin-panel')
     };
     // Auth elements
@@ -308,6 +387,57 @@ export class UIManager {
   }
   
   bindEvents() {
+    const energyCell = document.querySelector('[data-resource="energy"]');
+    energyCell.setAttribute('role', 'button');
+    energyCell.tabIndex = 0;
+    energyCell.setAttribute('aria-label', '에너지 생산·소비 상세 보기');
+    const showEnergy = () => this.showModal(`<div class="modal-header"><h2>에너지 현황</h2></div><div class="energy-details"><p>생산 ${formatAmount(gameState.energyProduction)}</p>${(gameState.planet.energyState?.sources || []).map(source => `<p>${escapeHtml(source.name || source.id)}${source.id === 'solarSatellite' ? ` ${formatAmount(source.count)}기 × ${formatAmount(source.perUnit)}` : ''}: <strong>${formatAmount(source.amount)}</strong></p>`).join('')}<p>소비 ${formatAmount(gameState.energyConsumption)}</p><p>잔여 ${formatAmount(gameState.energyProduction - gameState.energyConsumption)}</p></div>`);
+    energyCell.addEventListener('click', showEnergy);
+    energyCell.addEventListener('keydown', event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); showEnergy(); } });
+    document.addEventListener('click', event => {
+      const button = event.target.closest('[data-open-entity]');
+      if (!button) return;
+      this.hideModal();
+      this.switchView(button.dataset.entityView);
+      this.getBrowser(button.dataset.entityView)?.selectEntity(button.dataset.openEntity);
+    });
+    document.getElementById('combat-missions')?.addEventListener('click', async event => {
+      if (event.target.closest('[data-open-battle-records]')) { this.switchView('battleRecords'); return; }
+      const button = event.target.closest('[data-recall]');
+      if (!button) return;
+      const account = gameState.userId;
+      button.disabled = true;
+      try {
+        const { snapshot } = await apiService.recallFleet(button.dataset.recall);
+        if (account !== gameState.userId) return;
+        if (snapshot) gameState.syncFromServer(snapshot);
+        this.renderFleet();
+        this.showNotification('함대 귀환', '임무를 취소했습니다. 지금까지 비행한 시간만큼 이동한 뒤 복귀합니다.', 'info');
+      } catch (error) {
+        if (account === gameState.userId) { this.showNotification('귀환 요청', error.message, 'error'); void this.syncMilitaryState(); }
+      } finally { button.disabled = false; }
+    });
+    document.getElementById('battle-records-refresh')?.addEventListener('click', () => this.getRecordHistory('battle').load());
+    document.getElementById('battle-records-more')?.addEventListener('click', () => this.syncBattleReports(true));
+    for (const root of [document.getElementById('battle-records-list')]) {
+      root?.addEventListener('click', async event => {
+        const button = event.target.closest('[data-report-read]');
+        if (!button) return;
+        const account = gameState.userId;
+        button.disabled = true;
+        try {
+          await apiService.markBattleReportRead(button.closest('[data-report-id]').dataset.reportId);
+          if (account === gameState.userId) {
+            const report = this.battleReports?.find(item => String(item._id) === button.closest('[data-report-id]').dataset.reportId);
+            if (report) report[String(report.attacker.userId) === String(account) ? 'attackerRead' : 'defenderRead'] = true;
+            this.renderBattleRecords();
+            await this.syncBattleReports();
+          }
+        } catch (error) {
+          if (account === gameState.userId) this.showNotification('전투 기록', error.message, 'error');
+        } finally { button.disabled = false; }
+      });
+    }
     this.navButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         const view = btn.dataset.view;
@@ -330,7 +460,21 @@ export class UIManager {
         this.renderShipyardSwiper();
       });
     });
+    document.getElementById('resource-trade-form')?.addEventListener('submit', event => { event.preventDefault(); this.submitResourceTrade(); });
     this.modalClose.addEventListener('click', () => this.hideModal());
+    this.modalOverlay.addEventListener('keydown', event => {
+      if (!this.pendingModalConfirmation) return;
+      if (event.key === 'Escape') { event.preventDefault(); this.hideModal(); }
+      if (event.key === 'Tab') {
+        const buttons = [...this.modalOverlay.querySelectorAll('button:not([disabled])')];
+        const first = buttons[0], last = buttons.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    });
+    document.getElementById('scout-records-refresh')?.addEventListener('click', () => this.getRecordHistory('scout').load());
+    document.getElementById('planet-rename')?.addEventListener('click', () => this.showPlanetRename());
+    document.getElementById('planet-development')?.addEventListener('click', () => this.showPlanetDevelopment());
     this.modalOverlay.addEventListener('click', (e) => {
       if (e.target === this.modalOverlay) this.hideModal();
     });
@@ -426,11 +570,14 @@ export class UIManager {
     }
   }
   
-  switchView(view) {
-    if (view !== this.currentView && this.currentView === 'fleet' && this.formationView && !this.formationView.guard(() => this.switchView(view))) return;
+  switchView(view, options = {}) {
+    if (view !== this.currentView && this.currentView === 'fleet' && this.formationView && !this.formationView.guard(() => this.switchView(view, options))) return;
+    this.galaxyView?.nav.close?.();
+    this.strikeMap?.nav.close?.();
     stopInspector();
     this.currentView = view;
     if(view!=='galaxy')this.galaxyView?.setActive(false);
+    if(view!=='combat')this.strikeMap?.setActive(false);
     this.navButtons.forEach(button => button.classList.toggle('active', button.dataset.view === view));
     Object.values(this.panels).forEach(panel => {
       if (panel) panel.classList.add('hidden');
@@ -449,13 +596,29 @@ export class UIManager {
     }
 
     if (view !== 'combat') { this.strikeMap?.endDrag(); this.strikeMap?.closeConfirm(); }
-    if (view === 'galaxy') { this.renderGalaxy(); this.syncMilitaryState(); }
+    if (view === 'galaxy') { this.renderGalaxy(options.target); this.syncMilitaryState(); }
     if (view === 'fleet' || view === 'combat') { this.renderFleet(); this.syncMilitaryState(); }
     if (view === 'buildings') this.renderBuildingSwiper();
     if (view === 'research') this.renderResearchSwiper();
     if (view === 'shipyard') this.renderShipyardSwiper();
     if (view === 'market') this.renderMarket();
+    if (view === 'trade') this.renderTradeQuote();
+    if (view === 'battleRecords') { void this.getRecordHistory('battle').show(); }
+    if (view === 'scoutRecords') { void this.getRecordHistory('scout').show(); }
+    if (view === 'accountSettings') {
+      this.accountSettingsView ||= new AccountSettingsView(document.getElementById('account-settings-content'), {
+        api: apiService,
+        onMode: mode => { gameState.preferences = { uiMode: mode }; applyDisplayMode(mode); },
+        onToken: () => { this.militarySocket?.disconnect(); this.militarySocket = null; this.syncMilitarySocket(); void this.syncUserDataFromServer(); }
+      });
+      void this.accountSettingsView.show();
+    }
+    if (view === 'dashboard') { applyDisplayMode(gameState.preferences?.uiMode); renderGraphics(document.getElementById('mode-graphics'), gameState); }
     if (view === 'admin') this.initAdminPanel();
+    if (view === 'improvements') {
+      this.improvementsView ||= new ImprovementRequestsView(document.getElementById('improvements-content'), apiService, () => adminService.isAdmin());
+      this.improvementsView.show();
+    }
     
     // Refresh queue display to apply view-based filtering immediately
     this.updateBuildQueueUI(
@@ -467,6 +630,9 @@ export class UIManager {
   }
   
   updateResourceDisplay() {
+    if (this.currentView === 'dashboard') renderGraphics(document.getElementById('mode-graphics'), gameState);
+    this.renderPopulation();
+    if (this.currentView === 'trade') this.renderTradeQuote();
     const { resources, productionRates, energyProduction, energyConsumption, storage } = gameState;
     const round1 = (num) => Math.round(num * 10) / 10;
 
@@ -477,22 +643,96 @@ export class UIManager {
       const pct = storage[resource] ? Math.min((resources[resource] / storage[resource]) * 100, 100) : 0;
       el.count.textContent = GameData.formatNumber(round1(resources[resource]));
       el.rate.textContent = (rate >= 0 ? '+' : '') + GameData.formatNumber(rate) + '/h';
+      const cell = el.count.closest('[data-resource]');
+      if (cell) cell.title = `${cell.querySelector('.resource-name').textContent.trim()} ${formatAmount(resources[resource])} · 생산 ${el.rate.textContent} · 저장 ${formatAmount(storage[resource])}`;
       if (el.fill) el.fill.textContent = `${pct.toFixed(1)}%`;
       el.ring?.style.setProperty('--fill', (pct / 100).toFixed(4));
       el.ring?.closest('[data-resource]')?.classList.toggle('is-full', pct >= 99.5);
     }
 
     const energy = this.resourceElements.energy;
+    const storageWarnings = document.getElementById('storage-warnings');
+    const full = ['metal', 'crystal', 'deuterium'].filter(id => storage[id] > 0 && resources[id] >= storage[id]);
+    const stores = { metal: ['금속', 'metalStorage'], crystal: ['수정', 'crystalStorage'], deuterium: ['중수소', 'deuteriumTank'] };
+    storageWarnings.hidden = !full.length;
+    const warningHtml = full.map(id => `<span>${stores[id][0]} 저장 한도 도달 · 추가 생산분 저장 안 됨 <button type="button" class="holo-btn-small" data-open-entity="${stores[id][1]}" data-entity-view="buildings">저장고 건설</button></span>`).join('');
+    if (storageWarnings.innerHTML !== warningHtml) storageWarnings.innerHTML = warningHtml;
     if (energy.count) {
       const energyDiff = round1(energyProduction - energyConsumption);
       energy.count.textContent = (energyDiff >= 0 ? '+' : '') + GameData.formatNumber(energyDiff);
-      energy.rate.textContent = GameData.formatNumber(round1(energyProduction)) + '/' + GameData.formatNumber(round1(energyConsumption));
+      energy.rate.textContent = '생산 ' + GameData.formatNumber(round1(energyProduction)) + ' · 소비 ' + GameData.formatNumber(round1(energyConsumption));
+      const cell = energy.count.closest('[data-resource]');
+      if (cell) cell.title = `에너지 생산 ${formatAmount(energyProduction)} · 소비 ${formatAmount(energyConsumption)}`;
       energy.count.closest('[data-resource]')?.classList.toggle('is-negative', energyDiff < 0);
       const usage = energyProduction > 0 ? Math.min((energyConsumption / energyProduction) * 100, 100) : 100;
       energy.ring?.style.setProperty('--fill', (usage / 100).toFixed(4));
     }
   }
   
+  renderTradeQuote() {
+    const root = document.getElementById('resource-trade-form');
+    if (!root) return null;
+    this.tradeView ??= new ResourceTradeView({ root, getState: () => gameState, isPending: () => Boolean(this.tradePending) });
+    return this.tradeView.render();
+  }
+
+  async submitResourceTrade() {
+    if (this.tradePending) return;
+    const input = this.renderTradeQuote();
+    if (!input) return;
+    const planetId = gameState.planet.id;
+    this.tradePending = true;
+    this.renderTradeQuote();
+    const message = document.getElementById('trade-message');
+    message.textContent = '교환 중…';
+    try {
+      const result = await apiService.exchangeResources(planetId, input.from, input.to, input.amount);
+      gameState.syncFromServer(result.snapshot);
+      if (result.snapshot.queueState) this.hydrateQueueState(result.snapshot.queueState);
+      this.refreshSyncedViews();
+      message.textContent = `교환 완료 · 받은 자원 ${formatAmount(result.quote.received)}`;
+      this.addActivityLog(`자원 교환 — ${input.from} ${input.amount} → ${input.to} ${result.quote.received}`);
+    } catch (error) {
+      message.textContent = `교환 실패: ${error.message}`;
+    } finally {
+      this.tradePending = false;
+      this.renderTradeQuote();
+    }
+  }
+
+  renderPopulation() {
+    const p = gameState.planet.populationState;
+    if (!p) {
+      for (const id of ['header-population-count', 'header-population-housing', 'food-count', 'food-rate']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '—';
+      }
+      for (const id of ['header-population-meter', 'food-ring']) document.getElementById(id)?.style.setProperty('--fill', '0');
+      document.querySelector('[data-resource="food"]')?.classList.remove('is-negative', 'is-full');
+      const overview = document.getElementById('dashboard-population');
+      if (overview) overview.textContent = '인구 정보를 불러오는 중입니다.';
+      return;
+    }
+    const rate = Math.round(p.foodNet * 10) / 10;
+    const food = gameState.resources.food || 0;
+    const foodCapacity = p.foodCapacity || 0;
+    const foodFill = foodCapacity > 0 ? Math.min(1, Math.max(0, food / foodCapacity)) : 0;
+    document.getElementById('header-population-count').textContent = GameData.formatNumber(p.count);
+    document.getElementById('header-population-housing').textContent = `주거 ${GameData.formatNumber(Math.floor(p.housing))}`;
+    document.getElementById('header-population-meter').style.setProperty('--fill', String(p.housing > 0 ? Math.min(1, p.count / p.housing) : 0));
+    document.querySelector('[data-resource="population"]').title = `인구 ${formatAmount(p.count)} / 주거 ${formatAmount(p.housing)} · 취업 ${formatAmount(p.employed)} · 행복 ${Math.round(p.happiness)} · 지식 ${Math.round(p.knowledge || 0)}`;
+    document.getElementById('food-count').textContent = GameData.formatNumber(Math.round(food * 10) / 10);
+    document.getElementById('food-rate').textContent = `${rate >= 0 ? '+' : ''}${GameData.formatNumber(rate)}/h`;
+    document.getElementById('food-ring').style.setProperty('--fill', String(foodFill));
+    document.getElementById('food-fill').textContent = `${(foodFill * 100).toFixed(1)}%`;
+    const foodCell = document.querySelector('[data-resource="food"]');
+    foodCell.title = `식량 ${formatAmount(food)} / 저장 ${formatAmount(foodCapacity)} · 생산 ${formatAmount(p.foodProduction)}/h · 소비 ${formatAmount(p.foodConsumption)}/h · 수지 ${rate >= 0 ? '+' : ''}${GameData.formatNumber(rate)}/h`;
+    foodCell.classList.toggle('is-negative', rate < 0);
+    foodCell.classList.toggle('is-full', foodFill >= .995);
+    const overview = document.getElementById('dashboard-population');
+    if (overview) overview.innerHTML = renderPopulationDetails(gameState);
+  }
+
   async initResourceChart() {
     const ctx = document.getElementById('resource-chart');
     if (!ctx) return;
@@ -581,7 +821,12 @@ export class UIManager {
   // Method names are kept from the former swiper carousels; many callers use them.
 
   categoryTabs(type) {
+    const order = { building: ['resources', 'manufacturing', 'population'], research: ['population', 'planet', 'combat', 'drive'] }[type];
     const categories = catalog.categories(type);
+    if (order) categories.sort((a, b) => {
+      const rank = category => order.includes(category) ? order.indexOf(category) : order.length;
+      return rank(a) - rank(b);
+    });
     if (categories.length < 2) return [{ key: type, label: TYPE_LABELS[type].title, type }];
     return categories.map((category) => ({
       key: `${type}:${category}`,
@@ -596,7 +841,7 @@ export class UIManager {
     const root = document.getElementById(`${view}-browser`);
     if (!root) return null;
 
-    const isActive = (type) => (entity) => [this.queueItems[type], ...this.lastPendingQueue].filter(Boolean).some(item => item.type === type && item.itemId === entity.id && (entity.id === 'terraforming' || String(item.planetId ?? 0) === String(gameState.currentPlanet ?? 0)));
+    const isActive = (type) => (entity) => (type === 'building' && entity.id === 'researchLab' && gameState.researchInfrastructure?.researchBusy) || [this.queueItems[type], ...this.lastPendingQueue].filter(Boolean).some(item => item.type === type && item.itemId === entity.id && (type === 'research' || String(item.planetId ?? 0) === String(gameState.currentPlanet ?? 0)));
     const configs = {
       buildings: {
         showModel: true,
@@ -620,7 +865,13 @@ export class UIManager {
       }
     };
 
-    this.browsers[view] = new EntityBrowser({ root, getState: () => gameState, ...configs[view] });
+    this.browsers[view] = new EntityBrowser({
+      root, getState: () => gameState, ...configs[view],
+      onDetails: content => {
+        this.showModal(`<div class="modal-header"><h2>상세 정보</h2></div><div class="entity-full-details">${content}</div>`);
+        this.modalClose?.focus();
+      }
+    });
     return this.browsers[view];
   }
 
@@ -629,6 +880,9 @@ export class UIManager {
   }
 
   renderResearchSwiper() {
+    const network = document.getElementById('research-network-summary');
+    const labs = gameState.researchInfrastructure;
+    if (network) network.textContent = `사용자 공통 연구 · 연구망 Lv ${labs?.networkLevel || 0} · 현재 연구소 Lv ${labs?.originLabLevel || 0} · 최대 ${(labs?.networkLevel || 0) + 1}곳 연결`;
     this.getBrowser('research')?.render();
   }
 
@@ -703,17 +957,16 @@ export class UIManager {
   
   getScoutController() {
     this.scouts ??= new ScoutController({api:apiService,state:gameState,notify:(...args)=>this.showNotification(...args),onChange:()=>this.updateScoutUI()});
+    if(!this.scoutClock)this.scoutClock=setInterval(()=>{this.galaxyScoutView?.tick();if(this.currentView==='galaxy'&&!document.hidden)this.galaxyView?.traffic.tick();},1000);
     return this.scouts;
   }
   updateScoutUI() {
     if (!this.scouts || !apiService.isAuthenticated()) return;
-    if (this.galaxyView?.scoutEl) {
-      this.galaxyScoutView ??= new ScoutReportsView(this.galaxyView.scoutEl,{controller:this.scouts,state:gameState,onNavigate:view=>this.switchView(view),onMissions:()=>this.switchView('combat')});
+    if (this.currentView === 'galaxy' && this.scouts.target && this.galaxyView?.scoutEl) {
+      this.galaxyScoutView ??= new ScoutReportsView(this.galaxyView.scoutEl,{controller:this.scouts,state:gameState,onNavigate:view=>this.switchView(view),onMissions:()=>this.switchView('combat'),onCoordinate:target=>this.showGalaxyTarget(target)});
       const position=this.galaxyView.data?.positions.find(p=>p.position===this.galaxyView.selected);
       if(position)this.galaxyScoutView.render(position);
     }
-    const root=document.getElementById('scout-reports-content');
-    if(root){this.scoutHistoryView ??= new ScoutReportsView(root,{controller:this.scouts,state:gameState,onNavigate:view=>this.switchView(view),onMissions:()=>this.switchView('combat')});this.scoutHistoryView.render();}
   }
   /** Small menu to spend stored speed-up time on the item being built. */
   openSpeedupMenu(button) {
@@ -770,7 +1023,30 @@ export class UIManager {
     void this.marketView.render();
   }
 
-  renderGalaxy() {
+  async showGalaxyTarget(target) {
+    this.switchView('galaxy', { target });
+    if (this.currentView !== 'galaxy') return;
+    await this.galaxyLoad;
+    if (this.currentView === 'galaxy' && this.galaxyView.data && this.galaxyView.coords.galaxy === target.galaxy && this.galaxyView.coords.system === target.system)
+      this.galaxyView.select(target.planet);
+  }
+
+  showDirectColony(destination) {
+    const planet = gameState.planet;
+    const assigned = gameState.fleetFormations.filter(f => f.status === 'ready' && String(f.originPlanetId) === String(planet.id))
+      .reduce((n,f) => n + (f.ships?.colonyShip || 0), 0);
+    if ((gameState.fleet.colonyShip || 0) - assigned < 1) {
+      this.showNotification('식민선 필요', '미배정 식민선이 없습니다. 식민선을 건조하거나 편성된 함대에서 보내십시오.', 'error');
+      return;
+    }
+    this.showModal('<div class="direct-colony"></div>');
+    new DirectColonyView(document.getElementById('modal-content').querySelector('.direct-colony'), {
+      state:gameState, destination, onLaunch:order=>this.launchFleetOrder(order), onClose:()=>this.hideModal(),
+      isPending:Boolean(this.pendingOrders()[`colony:${planet.id}`]),
+    });
+  }
+
+  renderGalaxy(target) {
     const root = document.getElementById('galaxy-holo');
     if (!root) return;
     this.galaxyView ??= new GalaxyView({
@@ -780,7 +1056,8 @@ export class UIManager {
         next: document.getElementById('galaxy-next'),
         galaxy: document.getElementById('galaxy-input'),
         system: document.getElementById('system-input'),
-        home: document.getElementById('galaxy-home')
+        home: document.getElementById('galaxy-home'),
+        apply: document.getElementById('galaxy-apply')
       },
       onSelect: (position, coords) => {
         const scouts=this.getScoutController();
@@ -792,13 +1069,15 @@ export class UIManager {
       fetchTraffic: (galaxy, system, options) => apiService.getGalaxyTraffic(galaxy, system, options),
       fetchSystem: (galaxy, system) => apiService.getGalaxySystem(galaxy, system),
       getHome: () => ({ galaxy: gameState.planet.galaxy, system: gameState.planet.system }),
+      getPlanets: () => gameState.planets,
+      onColonize: target => this.showDirectColony(target),
       onTarget: (target) => {
         this.pendingFleetTarget = target;
         this.switchView('combat');
         this.showNotification('작전 목표 지정', `[${target.galaxy}:${target.system}:${target.planet}] 를 함대 작전 목표로 지정했습니다.`, 'success');
       }
     });
-    this.galaxyView.show();
+    this.galaxyLoad = this.galaxyView.show(target);
   }
   
   renderFleet() {
@@ -839,23 +1118,25 @@ export class UIManager {
   }
   persistPending() { sessionStorage.setItem(this.pendingKey,JSON.stringify(this.pendingFleetOrders)); }
   async launchFleetOrder(input) {
-    const order = {...input,requestId: input.requestId || crypto.randomUUID()};
+    const order = {...input,requestId: input.requestId || createRequestId()};
     const pending = this.pendingOrders();
-    pending[order.formationId] = order;
+    const pendingId = order.formationId || `colony:${order.originPlanetId}`;
+    if (pending[pendingId]) throw Object.assign(new Error("출격 결과를 확인 중입니다."), {status:409});
+    pending[pendingId] = order;
     this.persistPending();
     this.renderFleet();
     try {
       const result = await apiService.launchFleet(order);
-      delete pending[order.formationId];this.persistPending();
+      delete pending[pendingId];this.persistPending();
       if (result.snapshot) gameState.syncFromServer(result.snapshot);
       else await this.syncMilitaryState();
       this.pendingFleetTarget = null;
       this.refreshSyncedViews();
-      this.showNotification('함대 출격', `${result.fleet.formationName} · ${order.mission === 'colonize' ? '식민지 개척' : order.mission === 'attack' ? '공격' : '수송'} 임무를 시작했습니다.`, 'success');
+      this.showNotification('함대 출격', `${result.fleet.formationName} · ${order.mission === 'colonize' ? '식민지 개척' : order.mission === 'attack' ? '공격' : order.mission === 'deploy' ? '이동' : '수송'} 임무를 시작했습니다.`, 'success');
       return result;
     } catch (error) {
       if (error.status && error.status < 500) {
-        delete pending[order.formationId];this.persistPending();
+        delete pending[pendingId];this.persistPending();
         this.showNotification('출격 실패',error.message,'error');
         await this.syncMilitaryState();
       } else {
@@ -885,18 +1166,30 @@ export class UIManager {
       this.persistPending();this.renderFleet();
     } finally {this.recoveringOrders=false;}
   }
-  async syncMilitaryState() {
-    if(this.currentView==='galaxy' && !document.hidden && apiService.isAuthenticated())void this.galaxyView?.refreshTraffic();
-    if (this.militarySyncing || !apiService.isAuthenticated() || !catalog.loaded) return;
+  async syncMilitaryState({ event = false } = {}) {
+    if (document.hidden) { if (event) this.militaryDirty = true; return; }
+    event ||= Boolean(this.militaryDirty);
+    if (this.militarySyncing || !apiService.isAuthenticated() || !catalog.loaded || apiService.rateLimitedUntil > Date.now()) return;
+    // Merge timer, focus and socket refresh triggers into at most one batch per 3 seconds.
+    const syncKey = apiService.token;
+    if (this.militarySyncKey === syncKey && Date.now() - (this.lastMilitarySync || 0) < 3000) return;
+    this.militaryDirty = false;
+    this.militarySyncKey = syncKey;
+    this.lastMilitarySync = Date.now();
+    if(this.currentView==='galaxy' && !document.hidden)void this.galaxyView?.refreshTraffic();
+    if(this.currentView==='combat' && !document.hidden)void this.strikeMap?.refreshTraffic();
     this.militarySyncing=true;
     try {
-      const {snapshot}=await apiService.getFleetFormations();
-      const origin=gameState.planet.id;
-      gameState.syncFromServer(snapshot);
-      if(origin && origin!==gameState.planet.id){this.strikeMap?.endDrag();this.strikeMap?.closeConfirm();}
-      this.renderFleet();
+      const origin = gameState.planet.id;
+      await this.syncUserDataFromServer({ minAge: event ? 0 : 15000 });
+      if (origin && origin !== gameState.planet.id) { this.strikeMap?.endDrag(); this.strikeMap?.closeConfirm(); }
       await this.recoverPendingOrders();
-      await this.getScoutController().refresh();
+      await this.syncBattleReports(false, { minAge: event ? 0 : 60000 });
+      const scoutsVisible = this.currentView === 'galaxy';
+      if (event || scoutsVisible) await this.getScoutController().refresh(
+        this.currentView === 'galaxy' ? this.getScoutController().target : null,
+        { minAge: event ? 0 : 30000 });
+      if (this.currentView === 'galaxy' && !document.hidden) await this.galaxyView?.refreshMap({ background: !event });
     } catch(error) {
       const status=document.getElementById('military-sync-status');
       if(status)status.textContent='연결 확인 중 · 표시된 상태가 최신이 아닐 수 있습니다.';
@@ -907,33 +1200,26 @@ export class UIManager {
       this.militaryTimer=setInterval(()=>{
         if(document.hidden || !['fleet','combat','galaxy'].includes(this.currentView) || !apiService.isAuthenticated())return;
         this.syncMilitaryState();
-      },8000);
+      },15000);
       document.addEventListener('visibilitychange',()=>{
         this.galaxyView?.setActive(!document.hidden && this.currentView==='galaxy');
-        if(!document.hidden && ['fleet','combat','galaxy'].includes(this.currentView))this.syncMilitaryState();
+        this.strikeMap?.setActive(!document.hidden && this.currentView==='combat');
+        if(!document.hidden && (this.militaryDirty || ['fleet','combat','galaxy'].includes(this.currentView)))this.syncMilitaryState();
       });
       window.addEventListener('focus',()=>{if(['fleet','combat','galaxy'].includes(this.currentView))this.syncMilitaryState();});
       document.getElementById('fleet-to-combat')?.addEventListener('click',()=>this.switchView('combat'));
-      document.getElementById('manual-combat-target')?.addEventListener('submit',event=>{
-        event.preventDefault();const fields=new FormData(event.target);
-        this.strikeMap.show({galaxy:Number(fields.get('galaxy')),system:Number(fields.get('system'))},{targetSlot:Number(fields.get('planet'))});
-      });
-      document.getElementById('scout-reports')?.addEventListener('toggle',event=>{if(event.target.open)void this.getScoutController().refresh();});
-      if(!this.scoutClock)this.scoutClock=setInterval(()=>{this.galaxyScoutView?.tick();this.scoutHistoryView?.tick();if(this.currentView==='galaxy'&&!document.hidden)this.galaxyView?.traffic.tick();},1000);
-      document.getElementById('combat-reports')?.addEventListener('toggle',async event=>{
-        if(!event.target.open)return;
-        const root=event.target.querySelector('.movement-log');
-        try {const {reports}=await apiService.getBattleReports();root.innerHTML=reports.slice(0,10).map(r=>`<div class="log-row">${escapeHtml(new Date(r.battleTime).toLocaleString('ko-KR'))} · ${{attacker:'공격측 승리',defender:'방어측 승리',draw:'무승부'}[r.result?.winner] || '전투 완료'}</div>`).join('')||'<p>전투 기록이 없습니다.</p>';} catch(error){root.textContent=error.message;}
-      });
+
     }
     if(this.militarySocket?.authToken===apiService.token && this.militarySocket.active)return;
     this.militarySocket?.disconnect();
-    const socket=io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3000',{transports:['websocket']});
+    const socket=io(SERVER_URL,{transports:['websocket']});
     socket.authToken=apiService.token;this.militarySocket=socket;
     socket.on('connect',()=>socket.emit('authenticate',socket.authToken));
     socket.on('authenticated',()=>this.syncMilitaryState());
-    socket.on('fleetStateChanged',()=>this.syncMilitaryState());
+    socket.on('fleetStateChanged',()=>this.syncMilitaryState({ event: true }));
     socket.on('monsterEvent',(event)=>this.onMonsterEvent(event));
+    socket.on('serverSpeedChanged', () => { void this.syncUserDataFromServer(); });
+    socket.on('gameConfigUpdated', () => { void this.syncUserDataFromServer(); });
   }
 
   /** A monster appeared, moved or fell: tell the commander and refresh anything that shows it. */
@@ -962,17 +1248,83 @@ export class UIManager {
     else this.monsterBoard.draw();
   }
 
+  getRecordHistory(type) {
+    this.recordHistories ||= {};
+    return this.recordHistories[type] ||= new RecordHistoryView(document.getElementById(type === 'scout' ? 'scout-records-content' : 'battle-records-list'), {
+      api: apiService, state: gameState, type,
+      onCoordinate: target => this.showGalaxyTarget(target),
+      onChanged: () => { if (type === 'battle') void this.syncBattleReports(); }
+    });
+  }
+
+  renderBattleRecords() {
+    const badge = document.getElementById('battle-unread-count');
+    badge.textContent = this.battleUnreadCount ? `(${this.battleUnreadCount})` : '';
+    badge.hidden = !this.battleUnreadCount;
+    document.getElementById('battle-records-more').hidden = true;
+  }
+
+  async syncBattleReports(append = false, { minAge = 0 } = {}) {
+    if (!apiService.isAuthenticated()) return;
+    const account = gameState.userId;
+    if (!append && this.lastBattleAccount === account && Date.now() - (this.lastBattleSyncAt || 0) < minAge) return;
+    if (this.battleAccount !== account) {
+      this.battleAccount = account;
+      this.battleReports = [];
+      this.battleNotified = new Set();
+      this.battleNextCursor = null;
+      this.battleUnreadCount = 0;
+      this.battleHistoryExpanded = false;
+      this.renderBattleRecords();
+    }
+    if (this.battleLoading === account) return;
+    this.battleLoading = account;
+    const status = document.getElementById('battle-records-status');
+    status.textContent = '전투 기록을 불러오는 중…';
+    try {
+      const result = await apiService.getBattleReports(append ? this.battleNextCursor : null);
+      if (account !== gameState.userId) return;
+      if (!append) { this.lastBattleAccount = account; this.lastBattleSyncAt = Date.now(); }
+      const previous = this.battleReports || [];
+      const all = append ? [...previous, ...result.reports] : this.battleHistoryExpanded ? [...result.reports, ...previous.filter(item => !result.reports.some(report => String(report._id) === String(item._id)))] : result.reports;
+      this.battleReports = [...new Map(all.map(report => [String(report._id), report])).values()];
+      if (append || !this.battleHistoryExpanded) this.battleNextCursor = result.nextCursor;
+      if (append) this.battleHistoryExpanded = true;
+      this.battleUnreadCount = result.unreadCount || 0;
+      const fresh = result.reports.filter(report => !reportIsRead(report, account) && !this.battleNotified.has(String(report._id)));
+      for (const report of fresh) this.battleNotified.add(String(report._id));
+      if (fresh.length && !append) {
+        const latest = fresh[0];
+        const loot = latest.result?.loot || {};
+        this.showNotification(`새 전투 기록 ${fresh.length}건 · ${battleOutcome(latest, account)}`, `${String(latest.attacker?.userId) === String(account) ? '약탈' : '약탈당한'} 금속 ${formatAmount(loot.metal)}, 수정 ${formatAmount(loot.crystal)}, 중수소 ${formatAmount(loot.deuterium)} · 전투 기록 메뉴에서 확인`, 'info');
+      }
+      this.renderBattleRecords();
+      status.textContent = '';
+    } catch (error) {
+      if (account === gameState.userId) status.textContent = error.message;
+    } finally { if (this.battleLoading === account) this.battleLoading = null; }
+  }
+
   renderStrikeMap() {
     const root=document.getElementById('strike-map');if(!root)return;
     this.strikeMap ??= new StrikeMap({
       root,fetchSystem:(galaxy,system)=>apiService.getGalaxySystem(galaxy,system),
+      fetchTraffic: (galaxy, system) => apiService.getGalaxyTraffic(galaxy, system),
+      getAccount: () => gameState.userId,
+      getSpeedSettings: () => ({ serverSpeed: gameState.serverSpeed, flightSpeedMultiplier: gameState.flightSpeedMultiplier }),
       getHome:()=>({...gameState.planet}),
+      getPlanets: () => gameState.planets,
+      getResources: () => gameState.resources,
+      getDevelopment: () => ({ terraformLevel: gameState.research.terraforming || 0, bonusFields: gameState.areaSettings.bonusUsableFields }),
+      onScout: target => { void this.showGalaxyTarget(target); },
       getFormations:()=>gameState.fleetFormations.filter(f=>f.status==='ready'&&String(f.originPlanetId)===String(gameState.planet.id)&&profileOf(f.ships).ships>0),
       isPending:id=>Boolean(this.pendingOrders()[id]),
+      getBase: id => gameState.planets.find(p => String(p._id) === String(id)),
       onManage:()=>this.switchView('fleet'),
       onLaunch:order=>this.launchFleetOrder(order)
     });
     if(this.currentView!=='combat'){this.strikeMap.refresh();return;}
+    this.strikeMap.setActive(!document.hidden);
     const target=this.pendingFleetTarget;
     if(target && target!==this.strikeTargetShown){this.strikeTargetShown=target;this.strikeMap.show(target,{targetSlot:target.planet});}
     else if(!this.strikeMap.coords)this.strikeMap.show();
@@ -984,7 +1336,7 @@ export class UIManager {
     const signature = JSON.stringify(gameState.fleetMovements.map(({remaining, ...movement}) => movement));
     if (signature === this.missionSignature) { this.tickCombatMissions(); return; }
     this.missionSignature = signature;
-    root.innerHTML=`<header class="mission-section-heading"><div><p class="fleet-eyebrow">ACTIVE MISSIONS</p><h3>진행 중인 임무 <span>${gameState.fleetMovements.length}</span></h3></div><small id="military-sync-status" role="status">서버 상태 동기화</small></header><div class="mission-card-grid">${gameState.fleetMovements.map(m=>`<article class="mission-card" data-movement="${escapeHtml(m.id)}"><div class="mission-card-top"><div class="mission-ships">${shipImages(m.fleet,2)}</div><div><strong>${m.formationEmblem?emblemSvg(m.formationEmblem,{size:18})+' ':''}${escapeHtml(m.formationName || '기존 임무')}</strong><span class="fleet-status">${m.status==='returning'?'귀환 중':'진군 중'}</span></div><b data-mission-countdown></b></div><div class="mission-route"><span>[${m.origin.galaxy}:${m.origin.system}:${m.origin.planet}]</span><span>${m.status==='returning'?'←':'→'}</span><span>[${m.destination.galaxy}:${m.destination.system}:${m.destination.planet}]</span></div><progress max="1" value="0" aria-label="임무 진행률"></progress><div class="mission-card-bottom"><span>${m.mission==='colonize'?'식민지 개척':m.mission==='spy'?'정찰':m.mission==='attack'?'공격':m.mission==='recycle'?'잔해 수거':'수송'} · ${formatAmount(profileOf(m.fleet).ships)}척</span><small>${m.notice?escapeHtml(m.notice):m.status==='returning'?'귀환 완료 후 다시 출격할 수 있습니다.':'목표 행성으로 이동하고 있습니다.'}</small></div></article>`).join('')||'<div class="mission-empty">아직 진행 중인 임무가 없습니다. 위에서 함대를 선택해 출격하십시오.</div>'}</div>`;
+    root.innerHTML=`<header class="mission-section-heading"><div><p class="fleet-eyebrow">ACTIVE MISSIONS</p><h3>전체 행성의 진행 중인 임무 <span>${gameState.fleetMovements.length}</span></h3></div><small id="military-sync-status" role="status">서버 상태 동기화</small></header><div class="mission-card-grid">${gameState.fleetMovements.map(m=>`<article class="mission-card" data-movement="${escapeHtml(m.id)}"><div class="mission-card-top"><div class="mission-ships">${shipImages(m.fleet,2)}</div><div><strong>${escapeHtml(m.formationName || '기존 임무')}</strong><span class="fleet-status">${m.status==='returning'?'귀환 중':'진군 중'}</span></div><b data-mission-countdown></b></div><div class="mission-route"><span>[${m.origin.galaxy}:${m.origin.system}:${m.origin.planet}]</span><span>${m.status==='returning'?'←':'→'}</span><span>[${m.destination.galaxy}:${m.destination.system}:${m.destination.planet}]</span></div><progress max="1" value="0" aria-label="임무 진행률"></progress><div class="mission-card-bottom"><span>${m.mission==='colonize'?'식민지 개척':m.mission==='spy'?'정찰':m.mission==='attack'?'공격':m.mission==='deploy'?'이동':'수송'} · ${formatAmount(profileOf(m.fleet).ships)}척${m.colonists ? ` · 인구 ${formatAmount(m.colonists)}명` : ""}</span><small>${m.notice?escapeHtml(m.notice):m.status==='returning'?'귀환 완료 후 다시 출격할 수 있습니다.':'목표 행성으로 이동하고 있습니다.'}</small></div>${m.status === 'flying' ? `<button class="cmd-btn mission-recall" data-recall="${escapeHtml(m.id)}">임무 취소 · 귀환</button>` : ''}${m.battleReportId ? '<button class="cmd-btn" data-open-battle-records>전투 결과 보기</button>' : ''}</article>`).join('')||'<div class="mission-empty">아직 진행 중인 임무가 없습니다. 위에서 함대를 선택해 출격하십시오.</div>'}</div>`;
     fillThumbnails(root);this.tickCombatMissions();
     if(!this.missionCountdownTimer)this.missionCountdownTimer=setInterval(()=>{if(this.currentView==='combat')this.tickCombatMissions();},1000);
   }
@@ -993,7 +1345,7 @@ export class UIManager {
     for(const movement of gameState.fleetMovements) {
       const row=[...document.querySelectorAll('[data-movement]')].find(el=>el.dataset.movement===movement.id);if(!row)continue;
       const end=new Date(movement.status==='returning'?movement.returnTime:movement.arrivalTime).getTime();
-      const duration=new Date(movement.arrivalTime)-new Date(movement.startTime);
+      const duration = movement.status === 'returning' && movement.returnStartTime ? new Date(movement.returnTime) - new Date(movement.returnStartTime) : new Date(movement.arrivalTime) - new Date(movement.startTime);
       const remaining=Math.max(0,Math.ceil((end-now)/1000));
       row.querySelector('[data-mission-countdown]').textContent=remaining?formatDuration(remaining):'도착 처리 중';
       row.querySelector('progress').value=duration?Math.min(1,Math.max(0,1-(end-now)/duration)):1;
@@ -1059,22 +1411,170 @@ export class UIManager {
   }
   
   async demolishBuilding(buildingId) {
+    if (this.demolitionPending) return;
     const name = catalog.get('building', buildingId)?.name || buildingId;
     const level = gameState.buildings[buildingId] || 0;
+    if (level < 1) return;
+    const account = gameState.userId;
+    const planetId = gameState.planet.id;
+    const planetIndex = String(gameState.currentPlanet ?? 0);
     const entity = catalog.get('building', buildingId);
     const nextStorage = { ...gameState.storage };
     for (const [resource, rule] of Object.entries(entity?.effects?.storage || {})) {
-      // Same storage rule as the server; show losses before ordering demolition.
       nextStorage[resource] = Math.max(gameState.defaultStorage?.[resource] ?? 10000, evaluateEffect(rule, Math.max(0, level - 1)));
     }
+    const labels = { metal: '금속', crystal: '수정', deuterium: '중수소', food: '식량' };
     const loss = Object.entries(nextStorage).filter(([key, cap]) => gameState.resources[key] > cap)
-      .map(([key, cap]) => `${key} ${formatAmount(gameState.resources[key] - cap)}`).join(', ');
-    if (!window.confirm(`${name} Lv ${level} → ${level - 1} 철거를 예약합니다. 완료 시 1칸 회수, 자원 환급 없음.${loss ? ` 저장 한도 감소 예상 손실: ${loss}` : ''}`)) return;
+      .map(([key, cap]) => `${labels[key] || key} ${formatAmount(gameState.resources[key] - cap)}`).join(', ');
+    this.demolitionPending = true;
     try {
-      const result = await apiService.demolishBuilding(buildingId, String(gameState.currentPlanet ?? 0));
+      const confirmed = await this.confirmBuildingDemolition(name, level, loss);
+      if (!confirmed) return;
+      if (account !== gameState.userId || planetId !== gameState.planet.id || level !== (gameState.buildings[buildingId] || 0)) {
+        this.showNotification('철거 취소', '행성이나 건물 상태가 변경되었습니다. 다시 확인해 주세요.', 'info');
+        return;
+      }
+      const result = await apiService.demolishBuilding(buildingId, planetIndex);
       gameState.syncFromServer(result.snapshot); this.hydrateQueueState(result.snapshot.queueState); this.refreshSyncedViews();
       this.showNotification('철거 예약', name, 'success');
-    } catch (error) { this.showNotification('명령 실패', error.message, 'error'); await this.syncUserDataFromServer(); }
+    } catch (error) {
+      if (account !== gameState.userId) return;
+      this.showNotification('명령 실패', error.message, 'error');
+      await this.syncUserDataFromServer();
+    } finally { this.demolitionPending = false; }
+  }
+
+  confirmBuildingDemolition(name, level, loss) {
+    this.showModal(`<section id="demolition-confirmation" aria-labelledby="demolition-title">
+      <div class="modal-header"><h2 id="demolition-title">건물 철거 확인</h2></div>
+      <p><strong>${escapeHtml(name)}</strong> Lv ${level} → Lv ${level - 1}</p>
+      <p>철거 완료 시 면적 1칸을 회수합니다. 자원은 환급되지 않습니다.</p>
+      ${loss ? `<p class="area-warning">저장 한도 감소 예상 손실: ${escapeHtml(loss)}</p>` : ''}
+      <div class="confirm-actions"><button type="button" class="cmd-btn" data-demolition-cancel>취소</button><button type="button" class="cmd-btn primary" data-demolition-confirm>철거 예약</button></div>
+    </section>`);
+    return new Promise(resolve => {
+      this.pendingModalConfirmation = resolve;
+      const cancel = document.querySelector('[data-demolition-cancel]');
+      cancel.addEventListener('click', () => this.hideModal());
+      document.querySelector('[data-demolition-confirm]').addEventListener('click', () => {
+        const settle = this.pendingModalConfirmation;
+        this.pendingModalConfirmation = null;
+        this.hideModal();
+        settle?.(true);
+      }, { once: true });
+      cancel.focus();
+    });
+  }
+
+  showPlanetRename() {
+    const planetId = gameState.planet.id;
+    if (!planetId) return;
+    this.showModal(`<div class="modal-header"><h2>콜로니 이름 변경</h2></div>
+      <form id="planet-rename-form" class="planet-rename-form">
+        <label class="field" for="planet-rename-input">새 이름
+          <input id="planet-rename-input" name="name" type="text" value="${escapeHtml(gameState.planet.name)}" required autocomplete="off" aria-describedby="planet-rename-hint planet-rename-error">
+        </label>
+        <p id="planet-rename-hint" class="detail-muted">1~30자로 입력해 주세요.</p>
+        <p id="planet-rename-error" class="area-warning" role="alert"></p>
+        <div class="planet-rename-actions">
+          <button type="button" class="cmd-btn" id="planet-rename-cancel">취소</button>
+          <button type="submit" class="cmd-btn primary">저장</button>
+        </div>
+      </form>`);
+    const form = document.getElementById('planet-rename-form');
+    const input = form.elements.name;
+    const errorEl = document.getElementById('planet-rename-error');
+    document.getElementById('planet-rename-cancel').addEventListener('click', () => {
+      this.hideModal(); document.getElementById('planet-rename')?.focus();
+    });
+    input.focus(); input.select();
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const name = input.value.trim();
+      if (!name || [...name].length > 30 || /[\u0000-\u001f\u007f]/u.test(name)) {
+        errorEl.textContent = '콜로니 이름은 한 줄로 1~30자를 입력해 주세요.';
+        input.focus(); return;
+      }
+      const submit = form.querySelector('[type="submit"]');
+      if (submit.disabled) return;
+      submit.disabled = true; submit.textContent = '저장 중…'; errorEl.textContent = '';
+      try {
+        const result = await apiService.renamePlanet(planetId, name);
+        gameState.syncFromServer(result.snapshot);
+        this.hydrateQueueState(result.snapshot.queueState);
+        this.refreshSyncedViews();
+        // A different modal may have been opened while the request was running.
+        if (form.isConnected) {
+          this.hideModal(); document.getElementById('planet-rename')?.focus();
+        }
+        this.showNotification('이름 변경', `${result.name}(으)로 변경했습니다.`, 'success');
+      } catch (error) {
+        errorEl.textContent = error.message;
+      } finally {
+        submit.disabled = false; submit.textContent = '저장';
+      }
+    });
+  }
+
+  showPlanetDevelopment() {
+    if (!gameState.planet.area) return;
+    this.renderPlanetArea();
+    this.showModal(`<div class="modal-header"><h2>행성 개발 현황</h2></div>
+      <section id="planet-development-details" class="planet-area">${this.planetAreaDetails}</section>
+      <div class="planet-abandon-entry"><button type="button" class="cmd-btn" id="planet-abandon-open" ${(gameState.planets || []).length < 2 ? 'disabled' : ''}>행성 포기</button><p class="detail-muted">${(gameState.planets || []).length < 2 ? '마지막 행성은 포기할 수 없습니다.' : '개발 수준에 따른 해적 거점으로 전환됩니다. 소탕 전에는 다시 개척할 수 없습니다.'}</p></div>`);
+    document.getElementById('planet-abandon-open')?.addEventListener('click', () => this.showPlanetAbandon());
+    this.modalClose?.focus();
+  }
+
+  showPlanetAbandon() {
+    const planet = { ...gameState.planet };
+    if (!planet.id || (gameState.planets || []).length < 2) return;
+    this.showModal(`<section class="planet-abandon" aria-labelledby="planet-abandon-title">
+      <div class="modal-header"><h2 id="planet-abandon-title">행성 포기</h2></div>
+      <p><strong>${escapeHtml(planet.name)}</strong> [${planet.galaxy}:${planet.system}:${planet.planet}]의 소유권을 해제합니다.</p>
+      <p class="area-warning">자원·인구·함선·방어시설·함대 편성은 승계되지 않습니다. 건물 개발 수준으로 해적 레벨을 정하고 표준 병력과 시설로 전환됩니다. 해적 병력은 상한까지 재건되며, 완전히 소탕해야 빈 행성으로 돌아갑니다. 되돌릴 수 없습니다.</p>
+      <p class="detail-muted">완료한 공통 연구와 다른 행성의 자산은 유지됩니다. 이 행성의 작업이나 출발·접근 함대가 진행 중이면 포기할 수 없습니다. 연구소가 있는 행성은 공통 연구가 끝난 뒤 포기할 수 있습니다. 필요한 함선과 자원은 먼저 옮겨 주세요.</p>
+      <form id="planet-abandon-form" class="planet-rename-form">
+        <label class="field" for="planet-abandon-name">확인을 위해 행성 이름을 입력하세요.
+          <input id="planet-abandon-name" name="confirmationName" type="text" autocomplete="off" required maxlength="30" placeholder="${escapeHtml(planet.name)}">
+        </label>
+        <p id="planet-abandon-error" class="area-warning" role="alert"></p>
+        <div class="planet-rename-actions"><button type="button" class="cmd-btn" id="planet-abandon-cancel">취소</button><button type="submit" class="cmd-btn danger" disabled>행성 포기 확정</button></div>
+      </form>
+    </section>`);
+    const form = document.getElementById('planet-abandon-form');
+    const input = form.elements.confirmationName;
+    const submit = form.querySelector('[type="submit"]');
+    const errorEl = document.getElementById('planet-abandon-error');
+    let busy = false;
+    input.addEventListener('input', () => { submit.disabled = busy || input.value.trim() !== planet.name; });
+    document.getElementById('planet-abandon-cancel').addEventListener('click', () => this.hideModal());
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (busy || input.value.trim() !== planet.name) return;
+      if (String(gameState.planet.id) !== String(planet.id)) { errorEl.textContent = '선택한 행성이 변경되었습니다. 다시 확인해 주세요.'; return; }
+      const account = gameState.userId;
+      busy = true; submit.disabled = true; input.disabled = true; errorEl.textContent = '';
+      try {
+        const result = await apiService.abandonPlanet(planet.id, input.value.trim());
+        if (account !== gameState.userId) return;
+        gameState.syncFromServer(result.snapshot);
+        this.hydrateQueueState(result.snapshot.queueState);
+        this.refreshSyncedViews();
+        if (form.isConnected) this.hideModal();
+        this.showNotification('행성 포기', result.abandonedPlanet?.pirateLevel ? `${planet.name}이 해적 Lv.${result.abandonedPlanet.pirateLevel} 거점으로 전환됐습니다.` : `${planet.name}을 포기했습니다.`, 'info');
+      } catch (error) {
+        if (account !== gameState.userId) return;
+        if (!error.status || error.status >= 500) {
+          await this.syncUserDataFromServer();
+          if (!(gameState.planets || []).some(p => String(p.id || p._id) === String(planet.id))) { if (form.isConnected) this.hideModal(); return; }
+        }
+        errorEl.textContent = error.message;
+      } finally {
+        busy = false; input.disabled = false; submit.disabled = input.value.trim() !== planet.name;
+      }
+    });
+    input.focus();
   }
 
   renderPlanetArea() {
@@ -1092,32 +1592,50 @@ export class UIManager {
       } catch (error) { this.showNotification('선택 실패', error.message, 'error'); }
       finally { select.disabled = false; select.blur(); this.renderPlanetArea(); }
     };
+    const development = document.getElementById('planet-development');
+    if (development) development.disabled = !area;
     if (!area) return;
     const bonus = value => `${value >= 1 ? '+' : ''}${Math.round((value - 1) * 100)}%`;
     const level = gameState.research.terraforming || 0;
     const nextPercent = Math.min(100, area.baseUsablePercent + (level + 1) * 2);
-    const nextUsable = Math.floor(area.total * nextPercent / 100 + 1e-9);
+    const nextUsable = Math.min(area.total, Math.floor(area.total * nextPercent / 100 + 1e-9) + (area.bonusUsable || 0));
     const html = `<div class="area-heading"><strong>${escapeHtml(gameState.planet.name)} · 개발 현황</strong><span>전체 ${area.total}칸</span></div>
       <p>가용률 <b>${area.usablePercent}%</b> · 기본 ${area.baseUsablePercent}% + 테라포밍 ${level * 2}%p (상한 100%)</p>
+      ${area.bonusUsable ? `<p>추가 개발 공간 +${area.bonusUsable}칸 · 전체 면적 이내 적용</p>` : ''}
       <progress max="${Math.max(1, area.usable)}" value="${Math.min(area.usable, area.used + area.reserved)}" aria-label="건설 가능 면적 사용량"></progress>
-      <p>사용 ${area.used}칸 · 예약 ${area.reserved}칸 · 건설 가능 ${area.usable}칸 · <b>남은 ${area.available}칸</b></p>
+      <p>사용 ${area.used}칸 · 예약 ${area.reserved}칸 · 건설 가능 ${area.usable}칸 · <b>남은 ${area.available}칸</b></p>${renderAreaWarning(gameState)}
       ${area.overCapacity ? '<p class="area-warning">면적 한도 초과: 기존 시설은 유지됩니다. 철거로 공간을 확보해 주세요.</p>' : ''}
       <p>금속 ${bonus(modifiers?.metal ?? 1)} · 크리스털 ${bonus(modifiers?.crystal ?? 1)} · 중수소 ${bonus(modifiers?.deuterium ?? 1)} · 태양광 ${bonus(modifiers?.solar ?? 1)}</p>
       <p class="detail-muted">건설·업그레이드마다 1칸 사용. ${level < 30 ? `테라포밍 다음 단계: ${nextPercent}% / ${nextUsable}칸 (+${nextUsable - area.usable}칸)` : '테라포밍 최대 레벨'}</p>`;
-    for (const id of ['building-area', 'research-area']) {
-      const el = document.getElementById(id);
-      if (!el) continue;
-      const previous = el.querySelector('.area-details');
-      const open = previous ? previous.open : !window.matchMedia('(max-width: 700px)').matches;
-      el.innerHTML = `<details class="area-details" ${open ? 'open' : ''}>
-        <summary>행성 개발 현황 · 남은 ${area.available}칸 · 가용률 ${area.usablePercent}%</summary>
-        <div class="area-expanded">${html}</div>
-      </details>`;
+    this.planetAreaDetails = html;
+    const summary = `${gameState.planet.name} · 전체 ${area.total}칸 · 남은 ${area.available}칸 · 예약 ${area.reserved}칸 · 가용률 ${area.usablePercent}%`;
+    if (development) {
+      development.title = summary + ' · 자세히 보기';
+      development.setAttribute('aria-label', '행성 개발 현황 · ' + summary);
+      development.classList.toggle('area-warning', area.overCapacity || area.available <= 0);
     }
+    const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    setText('planet-development-rate', `${area.usablePercent}%`);
+    setText('planet-development-free', `${formatAmount(area.available)}칸`);
+    setText('planet-development-reserved', `예약 ${area.reserved}칸`);
+    setText('planet-development-summary', summary);
+    const meter = document.getElementById('planet-development-meter');
+    if (meter) meter.style.setProperty('--fill', Math.min(1, (area.used + area.reserved) / Math.max(1, area.usable)));
+    const details = document.getElementById('planet-development-details');
+    if (details) details.innerHTML = html;
   }
 
   updatePlanetInfo() {
     this.renderPlanetArea();
+    const environment = gameState.planet.environment;
+    const visual = document.getElementById('planet-visual');
+    if (visual) {
+      visual.dataset.environment = environment?.type || 'tropical';
+      visual.setAttribute('aria-label', `${environment?.name || '열대 행성'} · ${environment?.description || '바다와 숲이 발달한 행성'}`);
+      visual.title = environment?.description || '';
+    }
+    const environmentLabel = document.getElementById('planet-environment');
+    if (environmentLabel) environmentLabel.textContent = environment?.name || '열대 행성';
     const nameEl = document.getElementById('planet-name');
     const sizeEl = document.getElementById('planet-size');
     const tempEl = document.getElementById('planet-temp');
@@ -1156,11 +1674,12 @@ export class UIManager {
   // ═══════════════════════════════════════════════════════════════════════════
   
   initAdminPanel() {
-    // Initialize admin tabs
-    this.setupAdminTabs();
-    
-    // Setup all admin event handlers
-    this.setupAdminEvents();
+    // The panel persists across navigation; bind its events only once.
+    if (!this.adminHandlersBound) {
+      this.adminHandlersBound = true;
+      this.setupAdminTabs();
+      this.setupAdminEvents();
+    }
     
     // Initialize entity config manager (once)
       // Entity Config Manager is now part of Tech Tree
@@ -1199,10 +1718,18 @@ export class UIManager {
         this.loadAdminStatistics();
         break;
       case 'users':
-        this.loadUsers();
+        this.showUserGroup(this.adminUserKind || 'human');
+        break;
+      case 'ai':
+        document.querySelectorAll('.admin-tab-content').forEach(el => el.classList.toggle('active', el.id === 'tab-users'));
+        this.showUserGroup('bot');
+        break;
+      case 'ai-load':
+        if (!this.aiPlayersView) this.aiPlayersView = new AiPlayersView(document.getElementById('tab-ai'));
+        this.aiPlayersView.load();
         break;
       case 'settings':
-        // Settings are static, just ensure values are current
+        this.loadPopulationSettings();
         break;
       case 'entity':
         // Entity config loads itself
@@ -1229,7 +1756,88 @@ export class UIManager {
     }
   }
   
+  async loadPopulationSettings() {
+    const fields = document.getElementById('population-settings-fields');
+    if (!fields) return;
+    try {
+      const config = await adminService.getConfig();
+      const flightInput = document.getElementById('setting-flight-speed');
+      const flightSpeed = config.fleetSettings?.flightSpeedMultiplier ?? 1;
+      const speeds = [...new Set([0.1, 0.5, 1, 2, 5, 10, 20, 50, 100, flightSpeed])].sort((a,b) => a-b);
+      flightInput.innerHTML = speeds.map(speed => `<option value="${speed}" ${speed === flightSpeed ? 'selected' : ''}>${speed}배${speed === 1 ? ' · 기본' : ''}</option>`).join('');
+      flightInput.disabled = false;
+      document.getElementById('flight-settings-message').textContent = '';
+      const areaInput = document.getElementById('setting-bonus-usable-fields');
+      areaInput.value = config.areaSettings?.bonusUsableFields ?? 40;
+      areaInput.disabled = false;
+      document.getElementById('area-settings-message').textContent = '';
+      fields.innerHTML = Object.entries(POPULATION_SETTING_LABELS).map(([key, label]) => `<div class="setting-item"><label for="population-setting-${key}">${label}</label><input id="population-setting-${key}" name="${key}" type="number" min="${['growthHours', 'foodConsumptionPerPopulation'].includes(key) ? '0.01' : '0'}" step="any" required value="${Number(config.populationSettings?.[key] ?? 0)}"></div>`).join('');
+      document.getElementById('population-settings-message').textContent = '';
+    } catch (error) {
+      document.getElementById('population-settings-message').textContent = `불러오기 실패: ${error.message}`;
+      document.getElementById('area-settings-message').textContent = `불러오기 실패: ${error.message}`;
+    }
+  }
+
   setupAdminEvents() {
+    const flightForm = document.getElementById('flight-settings-form');
+    if (flightForm && !flightForm.dataset.bound) {
+      flightForm.dataset.bound = 'true';
+      flightForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const input = flightForm.elements.namedItem('flightSpeedMultiplier');
+        const message = document.getElementById('flight-settings-message'), submit = flightForm.querySelector('button[type="submit"]');
+        const value = Number(input.value);
+        if (input.disabled || !Number.isFinite(value) || value < .1 || value > 100) { message.textContent = '설정을 불러온 뒤 이동 배율을 선택하세요.'; return; }
+        submit.disabled = true;
+        try {
+          await adminService.updateConfig({ fleetSettings: { flightSpeedMultiplier: value } });
+          message.textContent = `이동 배율 ${value}배로 저장했습니다. 새 출격부터 적용됩니다.`;
+          await this.syncUserDataFromServer();
+        } catch (error) { message.textContent = `저장 실패: ${error.message}`; }
+        finally { submit.disabled = false; }
+      });
+    }
+    const areaForm = document.getElementById('area-settings-form');
+    if (areaForm && !areaForm.dataset.bound) {
+      areaForm.dataset.bound = 'true';
+      areaForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const input = areaForm.elements.namedItem('bonusUsableFields');
+        const message = document.getElementById('area-settings-message');
+        const value = Number(input.value);
+        if (input.disabled || !Number.isSafeInteger(value) || value < 0) {
+          message.textContent = '설정을 불러온 뒤 0 이상의 정수를 입력해 주세요.';
+          return;
+        }
+        const submit = areaForm.querySelector('button[type="submit"]');
+        submit.disabled = true;
+        try {
+          await adminService.updateConfig({ areaSettings: { bonusUsableFields: value } });
+          message.textContent = `추가 가용면적을 행성당 ${value}칸으로 저장했습니다.`;
+          await this.syncUserDataFromServer();
+        } catch (error) { message.textContent = `저장 실패: ${error.message}`; }
+        finally { submit.disabled = false; }
+      });
+    }
+    const populationForm = document.getElementById('population-settings-form');
+    if (populationForm && !populationForm.dataset.bound) {
+      populationForm.dataset.bound = 'true';
+      populationForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const message = document.getElementById('population-settings-message');
+        const submit = populationForm.querySelector('button[type="submit"]');
+        const values = Object.fromEntries(Object.keys(POPULATION_SETTING_LABELS).map(key => [key, Number(populationForm.elements.namedItem(key)?.value)]));
+        if (Object.values(values).some(value => !Number.isFinite(value))) { message.textContent = '설정을 먼저 불러와 주세요.'; return; }
+        submit.disabled = true;
+        try {
+          await adminService.updateConfig({ populationSettings: values });
+          message.textContent = '인구 설정을 저장했습니다.';
+          await this.syncUserDataFromServer();
+        } catch (error) { message.textContent = `저장 실패: ${error.message}`; }
+        finally { submit.disabled = false; }
+      });
+    }
     // Search users
     document.getElementById('search-users')?.addEventListener('click', () => this.loadUsers());
     document.getElementById('user-search')?.addEventListener('keypress', (e) => {
@@ -1277,10 +1885,25 @@ export class UIManager {
       }
     });
     
-    // Load initial stats
-    this.loadAdminStatistics();
   }
   
+  showUserGroup(kind) {
+    this.adminUserKind = kind === 'bot' ? 'bot' : 'human';
+    const root = document.getElementById('tab-users');
+    if (!this.userGroupBound) {
+      root.addEventListener('click', event => {
+        const button = event.target.closest('[data-user-kind]');
+        if (button) this.showUserGroup(button.dataset.userKind);
+      });
+      this.userGroupBound = true;
+    }
+    root.querySelectorAll('[data-user-kind]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.userKind === this.adminUserKind)));
+    document.getElementById('users-human-section').hidden = this.adminUserKind !== 'human';
+    document.getElementById('tab-ai').hidden = this.adminUserKind !== 'bot';
+    if (this.adminUserKind === 'bot') this.loadAdminTabData('ai-load');
+    else this.loadUsers();
+  }
+
   async loadUsers(page = 1) {
     const search = document.getElementById('user-search')?.value || '';
     const pageSize = parseInt(document.getElementById('users-page-size')?.value || '50');
@@ -1291,7 +1914,7 @@ export class UIManager {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;"><span class="loading-spinner">↻</span> Loading users...</td></tr>';
     
     try {
-      const data = await adminService.getUsers(page, pageSize, search);
+      const data = await adminService.getUsers(page, pageSize, search, 'human');
       
       // Update user count badge
       const badge = document.getElementById('user-count-badge');
@@ -1319,8 +1942,8 @@ export class UIManager {
         return `
         <tr data-user-id="${user._id}">
           <td class="col-username">
-            <div class="user-name">${user.username}</div>
-            <div class="user-email">${user.email || ''}</div>
+            <div class="user-name"><button class="user-detail-link" data-user-detail="${this.escapeHtml(user._id)}">${this.escapeHtml(user.username)}</button></div>
+            <div class="user-email" title="${this.escapeHtml(user.email || '')}">${this.escapeHtml(user.email || '')}</div>
           </td>
           <td class="col-status">
             <span class="user-status ${user.isOnline ? 'online' : 'offline'}">${user.isOnline ? 'ONLINE' : 'OFFLINE'}</span>
@@ -1328,25 +1951,24 @@ export class UIManager {
           <td class="col-planets">${user.planets?.length || 1}</td>
           <td class="col-resources">
             <div class="user-resources">
-              <span class="res-m" title="Metal">⚙️ ${this.formatNumber(resources.metal || 0)}</span>
-              <span class="res-c" title="Crystal">💎 ${this.formatNumber(resources.crystal || 0)}</span>
-              <span class="res-d" title="Deuterium">💧 ${this.formatNumber(resources.deuterium || 0)}</span>
+              ${this.renderUserResources(user._id, resources)}
             </div>
           </td>
           <td class="col-lastlogin">${user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}</td>
           <td class="col-actions">
             <div class="user-actions">
               <button onclick="window.editUser('${user._id}')">Edit</button>
-              <button onclick="window.viewUser('${user._id}')">View</button>
-              <button class="res-btn metal" onclick="window.addResource('${user._id}', 'metal')" title="+5000 Metal">+M</button>
-              <button class="res-btn crystal" onclick="window.addResource('${user._id}', 'crystal')" title="+5000 Crystal">+C</button>
-              <button class="res-btn deuterium" onclick="window.addResource('${user._id}', 'deuterium')" title="+5000 Deuterium">+D</button>
+              <button onclick="window.viewUser('${user._id}')">상세</button>
               <button class="delete" onclick="window.deleteUser('${user._id}')">Delete</button>
             </div>
           </td>
         </tr>
       `}).join('');
       
+      if (!tbody.dataset.detailBound) {
+        tbody.dataset.detailBound = 'true';
+        tbody.addEventListener('click', event => { const button = event.target.closest('[data-user-detail]'); if (button) this.viewUserDetails(button.dataset.userDetail); });
+      }
       // Setup pagination
       this.renderPagination(data.pagination, page);
       
@@ -1362,6 +1984,7 @@ export class UIManager {
   }
   
   formatNumber(num) {
+    num = Math.floor(num);
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toString();
@@ -1384,6 +2007,8 @@ export class UIManager {
   }
 
   showModal(content) {
+    this.pendingModalConfirmation?.(false);
+    this.pendingModalConfirmation = null;
     const modalContent = document.getElementById('modal-content');
     if (!this.modalOverlay || !modalContent) return;
 
@@ -1392,37 +2017,11 @@ export class UIManager {
   }
 
   async viewUserDetails(userId) {
-    try {
-      const user = await adminService.getUser(userId);
-      const planets = user.planets || [];
-      const planetRows = planets.map((planet, index) => {
-        const resources = planet.resources || {};
-        return `<div class="admin-user-planet">
-          <strong>${this.escapeHtml(planet.name || `Planet ${index + 1}`)}</strong>
-          <span>[${planet.galaxy ?? '-'}:${planet.system ?? '-'}:${planet.planet ?? '-'}]</span>
-          <span>⚙️ ${this.formatNumber(resources.metal || 0)} · 💎 ${this.formatNumber(resources.crystal || 0)} · 💧 ${this.formatNumber(resources.deuterium || 0)}</span>
-        </div>`;
-      }).join('') || '<p>No planets found.</p>';
-
-      this.showModal(`<div class="modal-header"><h2>USER DETAILS</h2></div>
-        <div class="modal-body admin-user-modal">
-          <dl class="admin-user-details">
-            <div><dt>Username</dt><dd>${this.escapeHtml(user.username)}</dd></div>
-            <div><dt>Email</dt><dd>${this.escapeHtml(user.email)}</dd></div>
-            <div><dt>Status</dt><dd>${user.isOnline ? 'Online' : 'Offline'}${user.isBanned ? ' · Banned' : ''}</dd></div>
-            <div><dt>Role</dt><dd>${this.escapeHtml(user.adminRole || 'Player')}</dd></div>
-            <div><dt>Rank / Points</dt><dd>${user.rank ?? 0} / ${this.formatNumber(user.points ?? 0)}</dd></div>
-            <div><dt>Joined</dt><dd>${this.formatDate(user.createdAt)}</dd></div>
-            <div><dt>Last login</dt><dd>${this.formatDate(user.lastLogin)}</dd></div>
-          </dl>
-          <h3>PLANETS</h3>
-          <div class="admin-user-planets">${planetRows}</div>
-        </div>`);
-    } catch (err) {
-      this.showNotification('Error', err.message, 'error');
-    }
+    this.showModal('<div class="admin-user-detail"></div>');
+    const root = document.querySelector('#modal-content .admin-user-detail');
+    if (root) await new AdminUserDetailsView(root, adminService, userId).load();
   }
-  
+
   renderPagination(pagination, currentPage) {
     const container = document.getElementById('user-pagination');
     if (!container || !pagination) return;
@@ -1475,9 +2074,10 @@ export class UIManager {
   async editUser(userId) {
     try {
       const user = await adminService.getUser(userId);
-      const planets = user.planets || [];
+      const planets = user.gameSnapshot?.planets || user.planets || [];
       const selectedPlanet = planets[user.currentPlanet] || planets[0] || { resources: {} };
       const resources = selectedPlanet.resources || {};
+      const energyText = planet => Number.isFinite(planet?.energyState?.balance) ? formatAmount(planet.energyState.balance) : '자동 계산';
       const planetResources = planets.map((planet) => planet.resources || {});
       const planetOptions = planets.map((planet, index) =>
         `<option value="${index}" ${planet === selectedPlanet ? 'selected' : ''}>${this.escapeHtml(planet.name || `Planet ${index + 1}`)}</option>`
@@ -1500,8 +2100,9 @@ export class UIManager {
           <h3>PLANET RESOURCES</h3>
           <div class="form-group"><label for="admin-user-planet">PLANET</label><select id="admin-user-planet" name="planetIndex">${planetOptions}</select></div>
           <div class="admin-user-resource-grid">
-            ${['metal', 'crystal', 'deuterium', 'energy'].map((resource) => `<div class="form-group"><label for="admin-user-${resource}">${resource.toUpperCase()}</label><input id="admin-user-${resource}" name="${resource}" type="number" min="0" step="1" value="${Number(resources[resource] || 0)}"></div>`).join('')}
+            ${['metal', 'crystal', 'deuterium', 'food'].map((resource) => `<div class="form-group"><label for="admin-user-${resource}">${resource.toUpperCase()}</label><input id="admin-user-${resource}" name="${resource}" type="number" min="0" step="1" value="${Math.ceil(Number(resources[resource] || 0))}"></div>`).join('')}
           </div>
+          <div class="form-group"><label>ENERGY · 자동 계산</label><output id="admin-user-energy">${escapeHtml(energyText(selectedPlanet))}</output><p class="detail-muted">시설 상태에 따라 계산되며 직접 수정할 수 없습니다.</p></div>
           <button class="holo-action-btn" type="submit">SAVE USER</button>
         </form>`);
 
@@ -1509,15 +2110,16 @@ export class UIManager {
       const planetSelect = document.getElementById('admin-user-planet');
       planetSelect?.addEventListener('change', () => {
         const nextResources = planetResources[Number(planetSelect.value)] || {};
-        ['metal', 'crystal', 'deuterium', 'energy'].forEach((resource) => {
+        document.getElementById('admin-user-energy').textContent = energyText(planets[Number(planetSelect.value)]);
+        ['metal', 'crystal', 'deuterium', 'food'].forEach((resource) => {
           const input = form?.elements.namedItem(resource);
-          if (input) input.value = Number(nextResources[resource] || 0);
+          if (input) input.value = Math.ceil(Number(nextResources[resource] || 0));
         });
       });
       form?.addEventListener('submit', async (event) => {
         event.preventDefault();
         const formData = new FormData(form);
-        const updatedResources = Object.fromEntries(['metal', 'crystal', 'deuterium', 'energy'].map((resource) => [resource, Number(formData.get(resource))]));
+        const updatedResources = Object.fromEntries(['metal', 'crystal', 'deuterium', 'food'].map((resource) => [resource, Number(formData.get(resource))]));
         if (Object.values(updatedResources).some((value) => !Number.isSafeInteger(value) || value < 0)) {
           this.showNotification('Error', 'Resources must be non-negative whole numbers.', 'error');
           return;
@@ -1570,6 +2172,19 @@ export class UIManager {
     }
   }
   
+  renderUserResources(userId, resources) {
+    return [
+      ['metal', 'res-m', '⚙️', '금속'],
+      ['crystal', 'res-c', '💎', '수정'],
+      ['deuterium', 'res-d', '💧', '중수소'],
+    ].map(([type, color, icon, name]) => `
+      <span class="user-resource ${color}">
+        <span title="${name}">${icon} ${this.formatNumber(resources[type] || 0)}</span>
+        <button class="res-btn ${type}" onclick="window.addResource('${this.escapeHtml(userId)}', '${type}')" title="${name} 5,000 추가" aria-label="${name} 5,000 추가">+</button>
+      </span>
+    `).join('');
+  }
+
   // Update resource display for a specific user in the table
   updateUserResourceDisplay(userId, resources) {
     const row = document.querySelector(`tr[data-user-id="${userId}"]`);
@@ -1577,11 +2192,7 @@ export class UIManager {
     
     const resCell = row.querySelector('.col-resources .user-resources');
     if (resCell) {
-      resCell.innerHTML = `
-        <span class="res-m" title="Metal">⚙️ ${this.formatNumber(resources.metal || 0)}</span>
-        <span class="res-c" title="Crystal">💎 ${this.formatNumber(resources.crystal || 0)}</span>
-        <span class="res-d" title="Deuterium">💧 ${this.formatNumber(resources.deuterium || 0)}</span>
-      `;
+      resCell.innerHTML = this.renderUserResources(userId, resources);
     }
   }
   
@@ -1716,6 +2327,8 @@ export class UIManager {
       const section = container.closest('.panel-queue-section');
       if (section) {
         section.style.display = panelHtml ? 'block' : 'none';
+        const count = section.querySelector('.panel-queue-count');
+        if (count) count.textContent = `${types.filter(type => activeByType[type]).length + pendingItems.length}건`;
       }
     };
 
@@ -1736,7 +2349,7 @@ export class UIManager {
   }
   
   updateLocalQueueDisplay() {
-    const now = Date.now();
+    const now = Date.now() + (gameState.serverOffset || 0);
     
     // Update each active queue type
     for (const type of ['building', 'research', 'ship', 'defense']) {
@@ -1749,7 +2362,8 @@ export class UIManager {
       this.updateQueueTimeDisplay(type, remaining, item.duration);
       
       // If completed, check with server
-      if (remaining === 0 && !item.checking) {
+      if (remaining === 0 && !item.checking && !document.hidden && apiService.isAuthenticated()
+          && Date.now() >= (item.nextCheckAt || 0) && Date.now() >= (apiService.rateLimitedUntil || 0)) {
         item.checking = true;
         this.checkBuildComplete(item.id || item._id);
       }
@@ -1803,6 +2417,7 @@ export class UIManager {
   }
   
   async loadQueueOnce() {
+    if (!apiService.isAuthenticated()) return;
     try {
       const data = await apiService.getBuildQueue();
       this.hydrateQueueState(data);
@@ -1845,6 +2460,7 @@ export class UIManager {
           if (this.queueItems[type] && this.queueItems[type].id === queueId) {
             this.queueItems[type].endTime = result.endTime;
             this.queueItems[type].checking = false;
+            this.queueItems[type].nextCheckAt = Date.now() + 5000;
             break;
           }
         }
@@ -1854,7 +2470,10 @@ export class UIManager {
       // Reset checking flag
       for (const type of ['building', 'research', 'ship', 'defense']) {
         if (this.queueItems[type] && this.queueItems[type].id === queueId) {
-          this.queueItems[type].checking = false;
+          const item = this.queueItems[type];
+          item.checking = false;
+          item.checkFailures = (item.checkFailures || 0) + 1;
+          item.nextCheckAt = Math.max(apiService.rateLimitedUntil || 0, Date.now() + Math.min(60000, 5000 * 2 ** Math.min(item.checkFailures - 1, 4)));
           break;
         }
       }
@@ -1958,7 +2577,7 @@ export class UIManager {
   
   showNotification(title, message, type = 'info') {
     const container = document.getElementById('notification-container');
-    if (!container) return;
+    if (!container || window.matchMedia('(max-width: 768px)').matches) return;
     
     const notification = document.createElement('div');
     notification.className = 'holo-notification ' + type;
@@ -1969,7 +2588,14 @@ export class UIManager {
     const messageEl = document.createElement('div');
     messageEl.className = 'message';
     messageEl.textContent = message;
-    notification.append(titleEl, messageEl);
+    const close = document.createElement('button');
+    close.className = 'notification-close';
+    close.type = 'button';
+    close.textContent = '×';
+    close.setAttribute('aria-label', '알림 닫기');
+    close.addEventListener('click', () => notification.remove());
+    notification.append(titleEl, messageEl, close);
+    notification.title = `${title} · ${message}`;
     
     container.appendChild(notification);
     while (container.children.length > MAX_NOTIFICATIONS) container.firstElementChild.remove();
@@ -1977,11 +2603,16 @@ export class UIManager {
     setTimeout(() => {
       notification.classList.add('is-leaving');
       setTimeout(() => notification.remove(), 300);
-    }, 5000);
+    }, type === 'error' ? 5000 : 2500);
   }
   
   hideModal() {
+    this.pendingModalConfirmation?.(false);
+    this.pendingModalConfirmation = null;
+    const returnTo = this.modalOverlay?.querySelector('.entity-full-details')
+      ? this.browsers[this.currentView]?.root.querySelector('[data-details]') : null;
     if (this.modalOverlay) this.modalOverlay.classList.add('hidden');
+    returnTo?.focus();
   }
   
   // Auth Methods
@@ -2090,11 +2721,22 @@ export class UIManager {
   handleLogout() {
     if (this.formationView && !this.formationView.guard(() => this.handleLogout())) return;
     this.militarySocket?.disconnect();
+    this.galaxyView?.nav.close?.();
+    this.strikeMap?.nav.close?.();
     this.strikeMap?.endDrag();this.strikeMap?.closeConfirm();
     this.marketView = null; this.closeSpeedupMenu();
     if (this.formationView) { this.formationView.dirty = false; this.formationView.selectedId = null; this.formationView.draft = null; this.formationView.signature = null; }
+    this.battleAccount = null;
+    this.battleReports = [];
+    this.battleUnreadCount = 0;
+    this.battleNextCursor = null;
+    this.renderBattleRecords();
     this.scouts?.reset();
+    this.improvementsView?.reset();
+    if (this.currentView === 'improvements') this.switchView('dashboard');
     this.galaxyView?.setActive(false);this.galaxyView?.trafficController.reset();
+    this.strikeMap?.setActive(false);this.strikeMap?.trafficController.reset();
+    this.hideModal();
     apiService.logout();
     localStorage.removeItem('user');
     
@@ -2111,6 +2753,7 @@ export class UIManager {
     // 로그인 화면으로 전환
     this.showLoginScreen();
     
+    applyDisplayMode('detailed');
     this.showNotification('퇴청', '안전하게 로그아웃되었습니다.', 'info');
   }
   

@@ -145,7 +145,7 @@ function calculateFleetProfile(fleet, shipStatsByType) {
   return { cargoCapacity, slowestSpeed };
 }
 
-function calculateTravelSeconds(origin, destination, slowestSpeed, speedPercent) {
+function calculateTravelSeconds(origin, destination, slowestSpeed, speedPercent, settings = {}) {
   if (!Number.isSafeInteger(slowestSpeed) || slowestSpeed <= 0) {
     throw new RangeError('slowestSpeed must be a finite positive integer');
   }
@@ -153,14 +153,20 @@ function calculateTravelSeconds(origin, destination, slowestSpeed, speedPercent)
     throw new RangeError('speedPercent must be a supported value between 10 and 100');
   }
 
-  const coordinateDistance = ['galaxy', 'system', 'planet'].reduce((total, coordinate) => {
-    const from = validateCoordinate(origin?.[coordinate], `origin ${coordinate}`);
-    const to = validateCoordinate(destination?.[coordinate], `destination ${coordinate}`);
-    return total + Math.abs(to - from);
-  }, 0);
-  const distance = Math.max(1, coordinateDistance);
+  const delta = Object.fromEntries(['galaxy', 'system', 'planet'].map(key => [key,
+    Math.abs(validateCoordinate(destination?.[key], `destination ${key}`) - validateCoordinate(origin?.[key], `origin ${key}`))]));
+  // Every coordinate offset contributes; economy speed does not affect flight.
+  const distance = delta.galaxy * 100000
+    + (delta.system ? 2700 + 95 * delta.system : 0)
+    + (delta.planet ? 1000 + 5 * delta.planet : 0) || 1;
 
-  return Math.ceil((distance * 350 * 1000 * 100) / (slowestSpeed * speedPercent));
+  const flightSpeedMultiplier = settings.flightSpeedMultiplier ?? 1;
+  if (!Number.isFinite(flightSpeedMultiplier) || flightSpeedMultiplier <= 0) {
+    throw new RangeError('fleet speed multipliers must be finite positive numbers');
+  }
+  // Distance-dependent navigation time keeps even probes sensitive to long routes.
+  const seconds = 10 + distance / 100 + (35000 / speedPercent) * Math.sqrt(distance * 10 / slowestSpeed);
+  return Math.max(1, Math.ceil(seconds / flightSpeedMultiplier));
 }
 
 module.exports = {

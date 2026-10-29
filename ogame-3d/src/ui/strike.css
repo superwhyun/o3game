@@ -370,3 +370,25 @@
     padding-inline: 14px;
   }
 }
+
+/* Align navigation controls along the input row beneath their labels. */
+.strike-head .galaxy-nav { align-items: flex-end; }
+.strike-head .coord-field input,
+.strike-head .nav-arrow,
+.strike-head [data-nav="home"] { height: 44px; }
+.strike-head [data-nav="home"] { justify-content: center; }
+.strike-head .coord-sep { line-height: 44px; padding-bottom: 0; }
+@media (max-width: 700px) {
+  .strike-head .galaxy-nav { gap: 4px; }
+  .strike-head .coord-field input { width: 48px; }
+  .strike-head .nav-arrow { flex-shrink: 0; }
+}
+.mission-choice { display:flex; padding:3px; gap:3px; border:1px solid var(--line); border-radius:8px; background:var(--ink-0); }
+.mission-choice label { flex:1; cursor:pointer; }
+.mission-choice input { position:absolute; opacity:0; width:1px; height:1px; }
+.mission-choice span { display:block; padding:10px; text-align:center; color:var(--text-dim); font-size:13px; border-radius:5px; }
+.mission-choice input:checked + span { background:#b8995720; color:var(--gold-bright); }
+.mission-choice input:focus-visible + span { outline:2px solid var(--gold-dim); }
+.mission-choice input:disabled + span { opacity:.5; cursor:default; }
+.mission-explanation { font-size:12px; color:var(--text-dim); line-height:1.65; margin:8px 0 12px; }
+.mission-kind { color:var(--gold-bright); font-size:13px; }

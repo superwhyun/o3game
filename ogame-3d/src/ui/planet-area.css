@@ -3,6 +3,153 @@
 .area-heading { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .planet-area progress { width: 100%; height: 7px; accent-color: #b3a16d; }
 .area-warning { color: #f8ad88; }
+.development-cell {
+  --res-color: var(--gold);
+  border-top: 0;
+  border-bottom: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+.development-cell .resource-name::before { content: none; }
+.development-cell .resource-name { color: var(--gold); }
+.development-cell .resource-value { color: var(--gold-bright); }
+.development-cell:hover { background: var(--gold-wash); }
+.development-cell:focus-visible { outline: 1px solid var(--gold); outline-offset: -2px; }
+.development-cell.area-warning { --res-color: var(--alert); }
+.development-cell.area-warning .resource-value { color: var(--alert); }
+#planet-development-details { margin: 0; }
 #planet-select { max-width: 190px; background: #14212a; color: #e6e5db; border: 1px solid #53616b; padding: 4px; font: inherit; font-size: .7rem; }
 .detail-command { flex-wrap: wrap; }
+.planet-switcher {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: rgba(12, 22, 30, .85);
+}
+.planet-switcher #planet-select {
+  min-height: 44px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px 0 0 6px;
+  background: transparent;
+}
+.planet-rename-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0 6px 6px 0;
+  background: rgba(200, 169, 106, .07);
+  color: var(--gold);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.planet-rename-button:hover,
+.planet-rename-button:active {
+  background: rgba(200, 169, 106, .16);
+  color: var(--gold-bright);
+}
+.planet-switcher:focus-within {
+  border-color: var(--gold-dim);
+}
+.planet-switcher select:focus-visible,
+.planet-rename-button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -3px;
+}
+.planet-rename-form { display: grid; gap: 12px; }
+.planet-rename-form input { width: 100%; min-width: 0; min-height: 44px; font-size: 16px; }
+.planet-rename-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.planet-rename-actions button { min-height: 44px; }
 @media(max-width: 700px) { #planet-select { max-width: 110px; } .planet-area { padding: 10px; } }
+@media (max-width: 700px) {
+  .header-right { gap: 6px; }
+  .planet-switcher #planet-select { max-width: 100px; }
+  .planet-rename-button { padding-inline: 8px; }
+  .colony-status .holo-resources {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-auto-rows: 46px;
+    gap: 4px;
+    overflow: visible;
+  }
+  .colony-status .holo-resources .resource-cell {
+    min-width: 0;
+    min-height: 0;
+    height: 46px;
+    grid-column: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "name" "value";
+    padding: 2px 6px 8px;
+    border-top: 0;
+  }
+  .colony-status .holo-resources .resource-name { font-size: 10px; letter-spacing: 0; }
+  .colony-status .holo-resources .resource-name::before { content: none; }
+  .colony-status .holo-resources .resource-value { font-size: 15px; letter-spacing: 0; }
+  .colony-status .holo-resources .resource-rate { display: none; }
+  .colony-status .holo-resources .resource-meter { left: 6px; right: 6px; }
+}
+
+.population-resource { --res-color: #c8a96a; }
+.food-resource { --res-color: #79bd8f; }
+.resource-icon { display: none; }
+@media (min-width: 701px) and (max-width: 1200px) {
+  .colony-status .holo-resources { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: visible; }
+  .colony-status .resource-cell { min-width: 0; padding-inline: 6px; }
+}
+@media (max-width: 559px) {
+  .colony-status .holo-resources { gap: 2px; }
+  .colony-status .holo-resources .resource-cell { padding-inline: 2px; text-align: center; }
+  .colony-status .holo-resources .resource-name { font-size: 0; line-height: 18px; }
+  .colony-status .holo-resources .resource-icon {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+    color: var(--res-color, var(--text-dim));
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .colony-status .holo-resources .resource-value { font-size: 11px; }
+  .colony-status .holo-resources .resource-meter { left: 2px; right: 2px; }
+}
+@media (max-width: 359px) {
+  .colony-status .holo-resources .resource-value { font-size: 10px; }
+}
+
+/* Climate-specific surfaces retain directional light and spherical shading. */
+.planet-visual[data-environment="ice"] {
+  background: radial-gradient(ellipse at 40% 15%, #f1fbff 0 16%, transparent 17%), radial-gradient(ellipse at 60% 85%, #e3faff 0 20%, transparent 21%), repeating-linear-gradient(135deg, transparent 0 14px, #9cd2e599 15px 17px, transparent 18px 30px), radial-gradient(circle at 30% 25%, #d6f5fa, #568fa9 70%, #152f4e);
+}
+.planet-visual[data-environment="volcanic"] {
+  background: radial-gradient(ellipse at 35% 40%, #ffb75a 0 3%, #eb532a 4% 7%, transparent 8%), radial-gradient(ellipse at 65% 70%, #ff9335 0 4%, #a93622 5% 9%, transparent 10%), repeating-linear-gradient(32deg, transparent 0 18px, #c54328 19px 21px, transparent 22px 34px), radial-gradient(circle at 30% 25%, #675047, #302629 70%, #120c11);
+}
+.planet-visual[data-environment="tropical"] {
+  background: radial-gradient(ellipse at 32% 30%, #62a768 0 18%, transparent 19%), radial-gradient(ellipse at 65% 65%, #327b55 0 22%, transparent 23%), radial-gradient(ellipse at 70% 12%, #c1d9c7aa 0 8%, transparent 9%), radial-gradient(circle at 30% 25%, #5698b2, #174d71 70%, #0a2035);
+}
+.planet-visual[data-environment="desert"] {
+  background: repeating-linear-gradient(165deg, transparent 0 12px, #93623a77 13px 17px, transparent 18px 27px), radial-gradient(ellipse at 35% 55%, #bf8850 0 18%, transparent 19%), radial-gradient(circle at 30% 25%, #f1d090, #aa7441 70%, #44301f);
+}
+.storage-warnings { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--gold-bright); font-size: 11px; padding-top: 4px; }
+.storage-warnings[hidden] { display: none; }
+.storage-warnings .holo-btn-small { min-height: 28px; padding: 2px 6px; font-size: 11px; }
+.area-capacity-warning { grid-column: 1 / -1; font-size: 12px; }
+.area-capacity-warning .holo-btn-small { min-height: 32px; }
+@media (max-width: 700px) { .storage-warnings { max-height: 72px; overflow-y: auto; } }
+.resource-cell.energy { cursor: pointer; }
+.resource-cell.energy .resource-rate { max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+
+.planet-abandon-entry { display:flex; align-items:center; gap:12px; margin-top:16px; padding-top:12px; border-top:1px solid var(--line); flex-wrap:wrap; }
+.planet-abandon-entry .cmd-btn, .planet-abandon .danger { color:var(--alert); border-color:var(--alert); }
+.planet-abandon-entry p { margin:0; }
+.planet-abandon p { font-size:13px; line-height:1.6; }

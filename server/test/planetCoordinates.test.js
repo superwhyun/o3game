@@ -99,3 +99,12 @@ test('User schema declares a unique coordinate index', () => {
   assert.ok(index, 'missing planets.coordinateKey index');
   assert.equal(index[1].unique, true);
 });
+
+test('selected galaxy allocation stays within that galaxy and rejects a full galaxy', () => {
+  assert.deepEqual(pickHomeCoordinate(new Set(['7:1:4']), { galaxy: 7, rng: firstSlot }), { galaxy: 7, system: 1, planet: 5 });
+  const occupied = new Set();
+  for (let system = 1; system <= 499; system++)
+    for (let planet = 1; planet <= POSITION_COUNT; planet++) occupied.add(`7:${system}:${planet}`);
+  assert.throws(() => pickHomeCoordinate(occupied, { galaxy: 7 }), { code: 'RESOURCE_CONFLICT', statusCode: 409 });
+  assert.equal(pickHomeCoordinate(occupied, { rng: firstSlot }).galaxy, 1);
+});

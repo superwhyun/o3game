@@ -4,10 +4,12 @@ const { settleUserState } = require('../services/GameStateService');
 const construction = require('../services/ConstructionService');
 const Queue = require('../models/BuildingQueue');
 const router = express.Router();
+const { apiContext, errorHandler } = require('../utils/apiErrors');
+router.use(apiContext, require('../middleware/apiValidation').apiValidation('/api/queue'));
 function route(handler) {
   return async (req, res) => {
     try { res.json(await handler(req)); }
-    catch (error) { res.status(error.statusCode || (error.code === 20 ? 503 : 500)).json({ error: error.message, code: error.code || 'REQUEST_FAILED', ...error.details }); }
+    catch (error) { throw error; }
   };
 }
 router.use(authMiddleware);
@@ -27,4 +29,5 @@ router.post('/check/:id', route(async req => {
     remaining: item.getRemainingSeconds(), endTime: item.endTime, snapshot: settled.snapshot };
 }));
 router.delete('/:id', route(req => construction.cancel(req.user._id, req.params.id)));
+router.use(errorHandler);
 module.exports = router;

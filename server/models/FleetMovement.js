@@ -44,6 +44,9 @@ const fleetMovementSchema = new mongoose.Schema({
     crystal: { type: Number, default: 0 },
     deuterium: { type: Number, default: 0 }
   },
+  // null marks older missions that never boarded residents.
+  colonists: { type: Number, default: null, min: 0, validate: value => value == null || Number.isSafeInteger(value) },
+  colonistsAtLaunch: { type: Number, default: null, min: 0 },
   
   // Coordinates
   origin: {
@@ -61,6 +64,7 @@ const fleetMovementSchema = new mongoose.Schema({
   // Timing
   startTime: { type: Date, required: true },
   arrivalTime: { type: Date, required: true },
+  recalledAt: { type: Date, default: null },
   returnStartTime: { type: Date, default: null },
   returnTime: { type: Date, default: null },
   

@@ -63,7 +63,7 @@ function reconcileFormations(user) {
         changed ||= kept !== count;
       }
       if (changed) {
-        formation.ships = ships;
+        require('./fleetCrew').applyCrewLoss(formation, ships);
         formation.revision += 1;
         formation.notice = "주둔 함선 손실로 편성이 조정되었습니다.";
       }

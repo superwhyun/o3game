@@ -101,3 +101,13 @@ test('seeded randomness is reproducible per event and move', () => {
   assert.notDeepEqual(first, [c(), c(), c()]);
   assert.ok(first.every((value) => value >= 0 && value < 1));
 });
+
+test('the starter presets are valid and grow from small to large', async () => {
+  const presets = require('../data/monsters/presets');
+  assert.deepEqual(presets.map((p) => p.typeId), ['abyss-whelp', 'void-carapace', 'nebula-sovereign']);
+  for (const preset of presets) assert.ok(rules.validateMonsterType(preset));
+  const hulls = presets.map((p) => rules.maxHull(rules.validateMonsterType(p)));
+  assert.ok(hulls[0] < hulls[1] && hulls[1] < hulls[2], 'small < medium < large');
+  const pools = presets.map((p) => BigInt(p.defaultPoolMicro));
+  assert.ok(pools[0] < pools[1] && pools[1] < pools[2]);
+});

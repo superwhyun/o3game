@@ -3,6 +3,7 @@ const formations = require('../services/FleetFormationService');
 const fleetService = require('../services/FleetService');
 const { formatFleetMovement } = require('../services/GameStateService');
 const express = require('express');
+const mongoose = require('mongoose');
 
 const { authMiddleware } = require('../middleware/admin');
 const BattleReport = require('../models/BattleReport');
@@ -136,12 +137,16 @@ router.get('/galaxy', authMiddleware, async (req, res) => {
       { $sort: { observedAt: -1, _id: -1 } },
       { $group: { _id: '$destination.planet', destination: { $first: '$destination' }, observedAt: { $first: '$observedAt' }, targetPlanetId: { $first: '$targetPlanetId' }, targetUserId: { $first: '$targetUserId' }, targetName: { $first: '$targetName' }, outcome: { $first: '$outcome' }, sections: { $first: '$sections' } } }
     ]);
+    const debris = await require('../services/DebrisService').inSystem(galaxy, system);
+    const monsters = await require('../services/MonsterService').inSystem(galaxy, system, req.user._id);
     const { conflicts, ...view } = buildGalaxySystem({
       galaxy,
       system,
       requestingUserId: req.user._id,
       scoutReports,
-      users
+      users,
+      debris,
+      monsters
     });
     if (conflicts.length > 0) {
       console.warn(`[galaxy] ${conflicts.length} duplicate planet slot(s) in [${galaxy}:${system}] — run "npm run migrate:planets"`, conflicts);
@@ -191,6 +196,17 @@ router.post('/fleets',authMiddleware,async(req,res)=>{
   } catch(error) {
     throw error;
   }
+});
+
+router.get('/monsters', authMiddleware, async (req, res) => {
+  try { res.json({ monsters: await require('../services/MonsterService').listVisible(req.user._id) }); }
+  catch (error) { res.status(500).json({ error: 'Unable to load monsters' }); }
+});
+router.get('/monsters/:eventId', authMiddleware, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.eventId)) return res.status(400).json({ error: 'Invalid event' });
+    res.json(await require('../services/MonsterService').detail(req.params.eventId, req.user._id));
+  } catch (error) { res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to load monster', code: error.code }); }
 });
 
 router.post('/fleets/:id/recall', authMiddleware, async (req, res) => {

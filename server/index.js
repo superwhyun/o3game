@@ -56,12 +56,15 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Routes (rate limiting applied above)
 app.use('/api/ai-worker', require('./routes/aiWorker'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/admin/monsters', require('./routes/adminMonsters'));
 app.use(['/api/account/email', '/api/account/password'], authLimiter);
 app.use('/api/account', require('./routes/account'));
 app.use('/api/admin', require('./routes/admin'));
 app.use(['/api/queue', '/api/game'], require('./middleware/maintenance'));
 app.use('/api/queue', require('./routes/buildingQueue'));
 app.use('/api/game', require('./routes/game'));
+app.use('/api/wallet', require('./routes/wallet'));
+app.use('/api/shop', require('./routes/shop'));
 
 // Make io accessible in routes
 app.set('io', io);
@@ -102,6 +105,9 @@ async function startServer() {
     console.log(`🧠 Entity catalog loaded (revision ${entityConfigService.getRevision()})`);
 
     const PORT = process.env.PORT || 3000;
+    require('./services/CgcPoller').addJob('rewards', (client, now) => require('./services/CgcRewardService').process(client, now));
+    require('./services/CgcPoller').addJob('shop-orders', (client) => require('./services/ShopService').processOrders(client));
+    require('./services/CgcPoller').start();
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 Socket.io ready for connections`);

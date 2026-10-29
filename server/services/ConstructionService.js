@@ -3,6 +3,8 @@ const { researchInfrastructure } = require('../utils/userResearch');
 const { atomic, requireTransactions } = require('./transactions');
 const { settleUserState, formatQueueItem } = require('./GameStateService');
 const Queue = require('../models/BuildingQueue');
+const User = require('../models/User');
+const SpeedupUsage = require('../models/SpeedupUsage');
 const { calculateArea, planetIndex, TERRAFORMING_MAX_LEVEL } = require('../utils/planetArea');
 const { calculateBuildingCost, calculateResearchCost, calculateUnitCost, calculateQueueDuration, getEntityDefinition } = require('../utils/gameCalculations');
 const activeFilter = userId => ({ userId, applied: false, status: { $in: ['building', 'pending'] } });
@@ -120,4 +122,53 @@ async function selectPlanet(userId, planetId) {
     return { snapshot: (await settleUserState(userId)).snapshot };
   });
 }
-module.exports = { enqueue, cancel, selectPlanet, checkRequirements };
+const DEFAULT_SPEEDUP_TYPES = ['building', 'research', 'ship'];
+/**
+ * Spend stored speed-up time (bought with CGC) on the item that is currently being built.
+ * The whole queue chain behind it moves forward by the same amount, so waiting items
+ * keep following the active one. Repeating a requestId returns the first result.
+ */
+async function speedup(userId, { queueId, seconds, requestId }) {
+  await requireTransactions();
+  if (typeof requestId !== 'string' || requestId.length < 8 || requestId.length > 100) fail('INVALID_REQUEST', 'requestId가 필요합니다.');
+  if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 31_536_000) fail('INVALID_SECONDS', '가속 시간이 올바르지 않습니다.');
+  return atomic(async () => {
+    const repeated = await SpeedupUsage.findOne({ userId, requestId });
+    if (repeated) {
+      const refreshed = await settleUserState(userId);
+      return { used: repeated.usedSeconds, repeated: true, snapshot: refreshed.snapshot };
+    }
+    const settled = await settleUserState(userId);
+    if (!settled) fail('INVALID_USER', '사용자를 찾을 수 없습니다.');
+    const { config } = settled;
+    const head = await Queue.findOne({ ...activeFilter(userId), _id: queueId });
+    if (!head) fail('QUEUE_NOT_ACTIVE', '이미 완료되었거나 취소된 작업입니다.');
+    if (!(config.speedupSettings?.allowedTypes || DEFAULT_SPEEDUP_TYPES).includes(head.type)) fail('SPEEDUP_NOT_ALLOWED', '이 작업에는 가속을 사용할 수 없습니다.');
+    if (head.status !== 'building') fail('NOT_ACTIVE_ITEM', '진행 중인 작업만 가속할 수 있습니다.');
+    const now = new Date();
+    const remaining = Math.ceil((+head.endTime - +now) / 1000);
+    if (remaining <= 0) fail('ALREADY_DONE', '이미 완료되는 작업입니다.');
+    const use = Math.min(seconds, remaining);
+    const spent = await User.updateOne(
+      { _id: userId, 'entitlements.speedupSeconds': { $gte: use } },
+      { $inc: { 'entitlements.speedupSeconds': -use, stateRevision: 1 } }
+    );
+    if (spent.matchedCount === 0) fail('INSUFFICIENT_SPEEDUP', '보유한 가속 시간이 부족합니다.');
+
+    const shift = use * 1000;
+    const oldEnd = head.endTime;
+    const chain = await Queue.find({
+      ...activeFilter(userId), type: head.type, _id: { $ne: head._id }, startTime: { $gte: oldEnd },
+      ...(head.type === 'research' ? {} : { planetId: head.planetId })
+    });
+    for (const item of [head, ...chain]) {
+      item.startTime = new Date(+item.startTime - shift);
+      item.endTime = new Date(+item.endTime - shift);
+      await item.save();
+    }
+    await SpeedupUsage.create({ userId, requestId, queueId: head._id, type: head.type, itemId: head.itemId, requestedSeconds: seconds, usedSeconds: use });
+    const refreshed = await settleUserState(userId);
+    return { used: use, repeated: false, snapshot: refreshed.snapshot };
+  });
+}
+module.exports = { enqueue, cancel, selectPlanet, checkRequirements, speedup };

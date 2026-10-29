@@ -61,6 +61,7 @@ const planetSchema = new mongoose.Schema({
 const formationSchema = new mongoose.Schema({
   number: { type: Number, required: true },
   name: { type: String, required: true },
+  emblem: { type: String, default: '' },
   originPlanetId: { type: mongoose.Schema.Types.ObjectId, required: true },
   ships: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   crew: { type: Number, min: 0, default: 0, validate: Number.isSafeInteger },
@@ -86,6 +87,18 @@ const userSchema = new mongoose.Schema({
   research: buildLevelFields(ENTITY_IDS.research),
   researchScopeVersion: { type: Number, default: 0 },
   terraformingLevel: { type: Number, default: 0, min: 0, max: 30 },
+
+  // Rights bought with CGC. Purchases only grant these; effects are applied by separate in-game actions.
+  entitlements: {
+    emblems: { type: [String], default: () => [] },
+    speedupSeconds: { type: Number, default: 0, min: 0 }
+  },
+
+  // Linked CGC wallet (lowercase 0x address). One wallet per account, never changed by the player.
+  wallet: {
+    address: { type: String, lowercase: true, trim: true },
+    linkedAt: { type: Date }
+  },
   
   // Game Stats
   rank: { type: Number, default: 0 },
@@ -114,6 +127,11 @@ userSchema.index(
   { unique: true, partialFilterExpression: { [COORDINATE_KEY_PATH]: { $exists: true } } }
 );
 
+userSchema.index(
+  { 'wallet.address': 1 },
+  { unique: true, partialFilterExpression: { 'wallet.address': { $type: 'string' } } }
+);
+
 function syncPlanetCoordinate(planet) {
   planet.position = planet.planet;
   planet.coordinateKey = coordinateKey(planet);
@@ -125,7 +143,10 @@ async function loadOccupiedCoordinateKeys(UserModel) {
     { $unwind: '$planets' },
     { $project: { _id: 0, galaxy: '$planets.galaxy', system: '$planets.system', planet: '$planets.planet' } }
   ]);
-  return new Set(rows.map(coordinateKey));
+  const keys = new Set(rows.map(coordinateKey));
+  // Slots held by an active event monster are not free for new home planets either.
+  for (const key of await require('../services/MonsterService').occupiedKeys()) keys.add(key);
+  return keys;
 }
 
 function isCoordinateConflict(error) {

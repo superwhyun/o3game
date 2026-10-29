@@ -23,6 +23,10 @@ import { disposeThumbnails } from '../three/entities/ModelThumbnails.js';
 import { io } from 'socket.io-client';
 import { SERVER_URL } from '../services/serverUrl.js';
 import { FleetFormationView } from './views/FleetFormationView.js';
+import { MarketView } from './views/MarketView.js';
+import { MonsterBoard } from './views/MonsterBoard.js';
+import { AdminEvents } from './views/AdminEvents.js';
+import { emblemSvg } from '../data/emblems.js';
 import { profileOf, shipImages, fillThumbnails } from './views/fleetCards.js';
 import * as THREE from 'three';
 import { gameState } from '../core/GameState.js';
@@ -189,6 +193,15 @@ export class UIManager {
     `;
     
     document.getElementById('logout-btn')?.addEventListener('click', () => this.handleLogout());
+    document.addEventListener('click', (event) => {
+      const trigger = event.target.closest('[data-speedup]');
+      const use = event.target.closest('[data-speedup-use]');
+      if (use) { void this.useSpeedup(Number(use.dataset.speedupUse)); return; }
+      if (event.target.closest('[data-speedup-shop]')) { this.closeSpeedupMenu(); this.switchView('market'); return; }
+      if (trigger) { this.openSpeedupMenu(trigger); return; }
+      if (!event.target.closest('.speedup-menu')) this.closeSpeedupMenu();
+    });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') this.closeSpeedupMenu(); });
   }
   
   updateImprovementNavigation(isAdmin) {
@@ -344,6 +357,7 @@ export class UIManager {
       galaxy: document.getElementById('galaxy-panel'),
       fleet: document.getElementById('fleet-panel'),
       combat: document.getElementById('combat-panel'),
+      market: document.getElementById('market-panel'),
       trade: document.getElementById('trade-panel'),
       battleRecords: document.getElementById('battle-records-panel'),
       scoutRecords: document.getElementById('scout-records-panel'),
@@ -587,6 +601,7 @@ export class UIManager {
     if (view === 'buildings') this.renderBuildingSwiper();
     if (view === 'research') this.renderResearchSwiper();
     if (view === 'shipyard') this.renderShipyardSwiper();
+    if (view === 'market') this.renderMarket();
     if (view === 'trade') this.renderTradeQuote();
     if (view === 'battleRecords') { void this.getRecordHistory('battle').show(); }
     if (view === 'scoutRecords') { void this.getRecordHistory('scout').show(); }
@@ -953,6 +968,61 @@ export class UIManager {
       if(position)this.galaxyScoutView.render(position);
     }
   }
+  /** Small menu to spend stored speed-up time on the item being built. */
+  openSpeedupMenu(button) {
+    this.closeSpeedupMenu();
+    const queueId = button.dataset.speedup;
+    const remaining = Number(button.dataset.remaining) || 0;
+    const balance = gameState.entitlements?.speedupSeconds || 0;
+    const menu = document.createElement('div');
+    menu.className = 'speedup-menu';
+    menu.setAttribute('role', 'dialog');
+    menu.setAttribute('aria-label', '가속');
+    const choices = [[3600, '1시간'], [21600, '6시간'], [86400, '24시간']]
+      .map(([seconds, label]) => [Math.min(seconds, remaining), label, seconds]);
+    const all = Math.min(balance, remaining);
+    menu.innerHTML = `<h4>가속</h4><p>보유 ${balance > 0 ? this.formatBuildTime(balance) : '없음'} · 남은 시간 ${this.formatBuildTime(remaining)}</p>
+      ${choices.map(([use, label]) => `<button type="button" class="cmd-btn" data-speedup-use="${use}" ${balance < use || use <= 0 ? 'disabled' : ''}>${label} 단축</button>`).join('')}
+      <button type="button" class="cmd-btn primary" data-speedup-use="${all}" ${all <= 0 ? 'disabled' : ''}>${all >= remaining ? '지금 완료' : '보유 시간 전부 사용'}</button>
+      ${balance <= 0 ? '<button type="button" class="cmd-btn" data-speedup-shop>상점에서 구매</button>' : ''}`;
+    document.body.appendChild(menu);
+    const rect = button.getBoundingClientRect();
+    menu.style.top = `${Math.min(window.innerHeight - menu.offsetHeight - 8, rect.bottom + 6)}px`;
+    menu.style.left = `${Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, rect.left - menu.offsetWidth + rect.width))}px`;
+    this.speedupMenu = { menu, queueId };
+    menu.querySelector('button:not([disabled])')?.focus();
+  }
+
+  closeSpeedupMenu() {
+    this.speedupMenu?.menu.remove();
+    this.speedupMenu = null;
+  }
+
+  async useSpeedup(seconds) {
+    const queueId = this.speedupMenu?.queueId;
+    this.closeSpeedupMenu();
+    if (!queueId || !(seconds > 0)) return;
+    try {
+      const result = await apiService.speedUpQueue(queueId, seconds, crypto.randomUUID());
+      if (result.snapshot) gameState.syncFromServer(result.snapshot);
+      await this.syncUserDataFromServer();
+      this.showNotification('가속', `${this.formatBuildTime(result.used)} 단축했습니다.`, 'success');
+    } catch (error) {
+      this.showNotification('가속', error.message, 'error');
+    }
+  }
+
+  renderMarket() {
+    const root = document.getElementById('market-view');
+    if (!root) return;
+    this.marketView ??= new MarketView(root, {
+      api: apiService,
+      onRightsChanged: () => this.syncUserDataFromServer(),
+      notify: (title, message, kind) => this.showNotification(title, message, kind)
+    });
+    void this.marketView.render();
+  }
+
   async showGalaxyTarget(target) {
     this.switchView('galaxy', { target });
     if (this.currentView !== 'galaxy') return;
@@ -1022,6 +1092,7 @@ export class UIManager {
     });
     this.formationView.render();
     this.renderStrikeMap();
+    this.renderMonsterBoard();
     this.renderCombatMissions();
   }
 
@@ -1146,8 +1217,35 @@ export class UIManager {
     socket.on('connect',()=>socket.emit('authenticate',socket.authToken));
     socket.on('authenticated',()=>this.syncMilitaryState());
     socket.on('fleetStateChanged',()=>this.syncMilitaryState({ event: true }));
+    socket.on('monsterEvent',(event)=>this.onMonsterEvent(event));
     socket.on('serverSpeedChanged', () => { void this.syncUserDataFromServer(); });
     socket.on('gameConfigUpdated', () => { void this.syncUserDataFromServer(); });
+  }
+
+  /** A monster appeared, moved or fell: tell the commander and refresh anything that shows it. */
+  onMonsterEvent(event) {
+    const where = event.location ? ` [${event.location.galaxy}:${event.location.system}:${event.location.planet}]` : '';
+    const text = {
+      spawned: [`${event.name} 출현`, `우주괴수가 나타났습니다.${where}`],
+      moved: [`${event.name} 이동`, `괴수가 새 위치로 이동했습니다.${where}`],
+      defeated: [`${event.name} 처치`, '괴수가 쓰러졌습니다. 보상 정산이 진행됩니다.'],
+      expired: [`${event.name} 퇴각`, '괴수가 사라졌습니다.']
+    }[event.type];
+    if (text) this.showNotification(text[0], text[1], event.type === 'defeated' ? 'success' : 'warning');
+    this.monsterBoard?.refresh();
+    if (['combat', 'galaxy'].includes(this.currentView)) { void this.strikeMap?.show(this.strikeMap.coords); void this.galaxyView?.show(); }
+  }
+
+  renderMonsterBoard() {
+    const root = document.getElementById('monster-board');
+    if (!root) return;
+    this.monsterBoard ??= new MonsterBoard(root, {
+      api: apiService,
+      onShow: (coords) => { void this.strikeMap?.show(coords); this.strikeMap?.root.scrollIntoView({ block: 'nearest' }); }
+    });
+    // renderFleet runs on every sync; the list itself only needs a refresh every few seconds.
+    if (Date.now() - (this.monsterBoardAt || 0) > 5000) { this.monsterBoardAt = Date.now(); void this.monsterBoard.refresh(); }
+    else this.monsterBoard.draw();
   }
 
   getRecordHistory(type) {
@@ -1636,6 +1734,17 @@ export class UIManager {
       case 'entity':
         // Entity config loads itself
         break;
+      case 'events': {
+        const root = document.getElementById('admin-events-root');
+        if (!root) break;
+        this.adminEvents ??= new AdminEvents(root, {
+          request: (path, options) => adminService.request(path, options),
+          ships: () => (catalog.list ? catalog.list('ship') : []).map((s) => ({ id: s.id, name: s.name })).filter((s) => !['solarSatellite', 'espionageProbe'].includes(s.id)),
+          toast: (title, message, kind) => this.showNotification(title, message, kind)
+        });
+        void this.adminEvents.load();
+        break;
+      }
       case 'techtree':
         if (!this.techTreeManager) {
           this.techTreeManager = new TechTreeManager();
@@ -2158,6 +2267,7 @@ export class UIManager {
           <div class="queue-progress">
             <div class="queue-progress-bar" data-type="${item.type}-progress" style="width: ${percent}%"></div>
           </div>
+          ${isPending ? '' : `<button type="button" class="btn-speedup" data-speedup="${item.id || item._id}" data-remaining="${remaining}" title="가속 시간 사용" aria-label="${item.name} 가속">⏩</button>`}
           <button class="btn-cancel" onclick="uiManager.handleCancelClick('${item.id || item._id}', '${item.name}', ${!isPending})" title="Cancel">×</button>
         </div>
       `;
@@ -2614,6 +2724,7 @@ export class UIManager {
     this.galaxyView?.nav.close?.();
     this.strikeMap?.nav.close?.();
     this.strikeMap?.endDrag();this.strikeMap?.closeConfirm();
+    this.marketView = null; this.closeSpeedupMenu();
     if (this.formationView) { this.formationView.dirty = false; this.formationView.selectedId = null; this.formationView.draft = null; this.formationView.signature = null; }
     this.battleAccount = null;
     this.battleReports = [];

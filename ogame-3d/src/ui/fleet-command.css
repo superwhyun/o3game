@@ -170,3 +170,24 @@
 @media(prefers-reduced-motion:reduce) { .mission-card { animation:none; } .formation-card,.combat-fleet-card { transition:none; } .course-line { animation:none; } }
 
 .formation-upkeep { line-height: 1.6; }
+
+/* Event monster board above the strike map */
+.monster-board { margin: 0 0 20px; padding: 18px 20px; border: 1px solid #5a2b30; border-radius: 14px; background: linear-gradient(140deg, #1b1319, #0d0f17); }
+.monster-board[hidden] { display: none; }
+.monster-board-head h3 { font-size: 18px; font-weight: 500; margin: 0 0 12px; }
+.monster-board-head h3 span { color: #e58b7b; font-size: 13px; margin-left: 6px; }
+.monster-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.monster-card { border: 1px solid #6b3a3f; border-radius: 12px; padding: 14px; display: grid; gap: 10px; background: #12131c; }
+.monster-card-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.monster-hp { height: 8px; border-radius: 4px; background: #251a20; overflow: hidden; }
+.monster-hp span { display: block; height: 100%; background: linear-gradient(90deg, #d0644f, #e8a15f); }
+.monster-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin: 0; font-size: 12px; }
+.monster-facts div { display: flex; justify-content: space-between; gap: 8px; }
+.monster-facts dt { color: var(--text-dim); }
+.monster-facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.monster-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.monster-ranking ol { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 12px; }
+.monster-ranking li { display: grid; grid-template-columns: 24px 1fr auto 52px; gap: 8px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid var(--line-soft); }
+.monster-ranking li.is-me { color: var(--gold-bright); }
+.monster-ranking i { font-style: normal; font-variant-numeric: tabular-nums; }
+.monster-ranking em { font-style: normal; color: var(--text-dim); text-align: right; }

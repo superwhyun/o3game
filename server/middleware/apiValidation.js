@@ -62,7 +62,7 @@ function validate(prefix, req) {
   }
   if (
     /^\/api\/queue\/(?:check\/)?[^/]+$/.test(p) &&
-    !["build", "demolish", "research", "ship", "planet"].includes(
+    !["build", "demolish", "research", "ship", "planet", "speedup"].includes(
       p.split("/").at(-1),
     ) &&
     !id(p.split("/").at(-1))

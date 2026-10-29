@@ -75,6 +75,16 @@ const gameConfigSchema = new mongoose.Schema({
     resourceExchange: { type: Boolean, default: true }
   },
   
+  // CGC shop and speed-up rules (admin controlled)
+  shop: {
+    disabled: { type: [String], default: () => [] },
+    // sku -> unit price in micro CGC (integer string); no entry = not for sale
+    prices: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }
+  },
+  speedupSettings: {
+    allowedTypes: { type: [String], default: () => ['building', 'research', 'ship'] }
+  },
+
   // Maintenance
   maintenanceMode: { type: Boolean, default: false },
   maintenanceMessage: { type: String, default: 'Server is under maintenance' },

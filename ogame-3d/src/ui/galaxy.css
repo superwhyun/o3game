@@ -474,3 +474,16 @@
 .slot-pirate .slot-label { fill: #e69b70; }
 
 .legend-pirate::before { background: #c76a45; }
+
+/* Event monsters and battle wreckage on the orbit charts */
+.slot-monster .monster-aura { fill: none; stroke: #d0644f; stroke-width: 1.5; stroke-dasharray: 3 4; opacity: 0.8; }
+.slot-monster .monster-body { fill: #8a2f3a; stroke: #e58b7b; stroke-width: 1; }
+.slot-monster .monster-eye { fill: #ffe9c2; }
+.slot-monster-label { fill: #f0b3a7; font-size: 18px; font-weight: 600; text-anchor: middle; paint-order: stroke; stroke: #05070c; stroke-width: 3px; }
+.slot-debris .debris-shard { fill: #8a96a8; stroke: #c5ced9; stroke-width: 0.8; }
+.slot-debris .debris-dot { fill: #a9b1bd; }
+.orbit-legend .legend-monster::before { background: #d0644f; }
+.orbit-legend .legend-debris::before { background: #8a96a8; }
+.slot-mark { margin-left: 6px; padding: 0 6px; border-radius: 10px; font-size: 10px; border: 1px solid; }
+.mark-monster { color: #f0b3a7; border-color: #d0644f; }
+.mark-debris { color: #c5ced9; border-color: #6b7686; }

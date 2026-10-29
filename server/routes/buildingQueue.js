@@ -18,6 +18,7 @@ router.post('/build', route(req => construction.enqueue(req.user._id, { type: 'b
 router.post('/demolish', route(req => construction.enqueue(req.user._id, { type: 'building', action: 'demolish', itemId: req.body.buildingId, planetId: req.body.planetId })));
 router.post('/research', route(req => construction.enqueue(req.user._id, { type: 'research', itemId: req.body.researchId, planetId: req.body.planetId })));
 router.post('/ship', route(req => construction.enqueue(req.user._id, { type: req.body.entityType ?? 'ship', itemId: req.body.shipId, count: req.body.count ?? 1, planetId: req.body.planetId })));
+router.post('/speedup', route(req => construction.speedup(req.user._id, { queueId: req.body.queueId, seconds: req.body.seconds, requestId: req.body.requestId })));
 router.post('/planet', route(req => construction.selectPlanet(req.user._id, req.body.planetId)));
 router.post('/check/:id', route(async req => {
   const settled = await settleUserState(req.user._id);

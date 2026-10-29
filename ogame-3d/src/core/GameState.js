@@ -81,6 +81,8 @@ export class GameState extends EventEmitter {
     };
     
     this.fleetFormations = [];
+    this.wallet = null;
+    this.entitlements = { emblems: [], speedupSeconds: 0 };
     this.fleetMovements = [];
     this.planets = [];
     this.unassignedShips = {};
@@ -136,6 +138,8 @@ export class GameState extends EventEmitter {
     this.preferences = userData.preferences || { uiMode: "detailed" };
     this.areaSettings = userData.areaSettings || { bonusUsableFields: 40 };
     this.fleetFormations = userData.fleetFormations || [];
+    this.wallet = userData.wallet || null;
+    this.entitlements = userData.entitlements || { emblems: [], speedupSeconds: 0 };
     this.fleetMovements = userData.fleetMovements || [];
     this.unassignedShips = userData.unassignedShips || {};
     // Sync server settings

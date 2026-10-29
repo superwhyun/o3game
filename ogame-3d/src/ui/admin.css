@@ -542,3 +542,24 @@
 .loading-spinner {
   color: var(--text-faint);
 }
+
+/* Events & shop tab */
+#admin-events-root { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+#admin-events-root .admin-card { min-width: 0; }
+#admin-events-root .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+#admin-events-root .admin-table th, #admin-events-root .admin-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+#admin-events-root .admin-table th { color: var(--text-dim); font-weight: 500; font-size: 12px; white-space: nowrap; }
+#admin-events-root .admin-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; align-items: end; margin-bottom: 14px; }
+#admin-events-root .admin-form label { display: grid; gap: 4px; font-size: 12px; color: var(--text-dim); }
+#admin-events-root .admin-form input, #admin-events-root .admin-form select { width: 100%; }
+#admin-events-root fieldset { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; }
+#admin-events-root .admin-unit { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; align-items: end; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+#admin-events-root .admin-check { display: flex; align-items: center; gap: 8px; }
+#admin-events-root .admin-check input { width: auto; }
+#admin-events-root .admin-table-wrap { overflow-x: auto; }
+#admin-events-root .admin-row-actions { display: flex; gap: 8px; flex-wrap: wrap; grid-column: 1 / -1; }
+#admin-events-root .admin-muted { color: var(--text-dim); font-size: 12px; }
+#admin-events-root .admin-sim { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 8px 0; }
+#admin-events-root .admin-sim dt { color: var(--text-dim); font-size: 12px; }
+#admin-events-root .admin-sim dd { margin: 0; font-variant-numeric: tabular-nums; }
+#admin-events-root .warn { color: var(--warn); }

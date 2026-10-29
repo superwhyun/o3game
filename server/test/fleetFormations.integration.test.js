@@ -421,3 +421,49 @@ test(
     }
   },
 );
+
+test('a formation emblem must be free or owned, is kept on updates and recorded at launch', { timeout: 60000 }, async () => {
+  const { MongoMemoryReplSet } = require('mongodb-memory-server');
+  const mongoose = require('mongoose');
+  const { randomUUID } = require('node:crypto');
+  const db = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  await mongoose.connect(db.getUri('emblem_test'));
+  try {
+    const User = require('../models/User');
+    const forms = require('../services/FleetFormationService');
+    const entities = require('../services/EntityConfigService');
+    const Config = require('../models/GameConfig');
+    await Config.getConfig(); await entities.initialize(); await User.init();
+    const user = await User.create({ username: 'emblemer', email: 'emblem@test.invalid', password: randomUUID(), planets: [{ galaxy: 1, system: 1, planet: 4, fleet: { lightFighter: 3 } }] });
+    const made = await forms.change(user._id, 'create', null, { originPlanetId: user.planets[0]._id });
+    const update = (input) => forms.change(user._id, 'update', made.formationId, input);
+    let revision = 1;
+    const base = () => ({ expectedRevision: revision, name: '문장 함대', ships: { lightFighter: 2 } });
+
+    await update({ ...base(), emblem: 'star' }); revision++;
+    assert.equal((await User.findById(user._id)).fleetFormations[0].emblem, 'star');
+    await update(base()); revision++; // omitted emblem keeps the current one
+    assert.equal((await User.findById(user._id)).fleetFormations[0].emblem, 'star');
+    await assert.rejects(update({ ...base(), emblem: 'dragon' }), (error) => error.code === 'EMBLEM_NOT_OWNED');
+    await assert.rejects(update({ ...base(), emblem: 'made-up' }), (error) => error.code === 'EMBLEM_NOT_OWNED');
+    await assert.rejects(update({ ...base(), emblem: 7 }), (error) => error.code === 'EMBLEM_NOT_OWNED');
+    assert.equal((await User.findById(user._id)).fleetFormations[0].revision, revision);
+
+    await User.updateOne({ _id: user._id }, { $addToSet: { 'entitlements.emblems': 'dragon' } });
+    await update({ ...base(), emblem: 'dragon' }); revision++;
+    assert.equal((await User.findById(user._id)).fleetFormations[0].emblem, 'dragon');
+    await update({ ...base(), emblem: '' }); revision++;
+    assert.equal((await User.findById(user._id)).fleetFormations[0].emblem, '');
+
+    await update({ ...base(), emblem: 'dragon' }); revision++;
+    const fleets = require('../services/FleetService');
+    const target = await User.create({ username: 'target', email: 'target@test.invalid', password: randomUUID(), planets: [{ galaxy: 1, system: 1, planet: 9 }] });
+    const movement = await fleets.launch(user._id, { requestId: randomUUID(), mission: 'attack', formationId: String(made.formationId), originPlanetId: String(user.planets[0]._id), expectedRevision: revision, expectedTargetPlanetId: String(target.planets[0]._id), destination: { galaxy: 1, system: 1, planet: 9 }, cargo: { metal: 0, crystal: 0, deuterium: 0 } });
+    assert.equal(movement.formationEmblemAtLaunch, 'dragon');
+    // Changing the emblem later does not rewrite history.
+    const { formatFleetMovement } = require('../services/GameStateService');
+    assert.equal(formatFleetMovement(movement).formationEmblem, 'dragon');
+  } finally {
+    await mongoose.disconnect(); await db.stop();
+  }
+});

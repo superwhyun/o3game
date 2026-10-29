@@ -65,7 +65,8 @@ class CosmicEmpire {
         '4': 'shipyard',
         '5': 'galaxy',
         '6': 'fleet',
-        '7': 'combat'
+        '7': 'combat',
+        '8': 'market'
       };
       
       if (viewMap[e.key]) {

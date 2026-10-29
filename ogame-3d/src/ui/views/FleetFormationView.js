@@ -1,6 +1,7 @@
 import { catalog } from "../../data/catalog.js";
 import { isLaunchable, fleetCrew } from "../../data/fleetMath.js";
 import { escapeHtml, formatAmount } from "../dom.js";
+import { EMBLEMS, emblemSvg, usableEmblems } from "../../data/emblems.js";
 import {
   profileOf,
   shipImages,
@@ -94,7 +95,7 @@ export class FleetFormationView {
     this.selectedId = id;
     const f = this.selected();
     this.draft = f
-      ? { name: f.name, ships: { ...f.ships }, revision: f.revision }
+      ? { name: f.name, ships: { ...f.ships }, revision: f.revision, emblem: f.emblem || "" }
       : null;
     this.dirty = false;
     this.error = "";
@@ -124,6 +125,14 @@ export class FleetFormationView {
       const id = button.dataset.formation;
       if (id === this.selectedId) return;
       if (this.guard(() => this.load(id))) this.load(id);
+      return;
+    }
+    if (button.dataset.emblem !== undefined) {
+      if (this.selected()?.status !== "ready" || this.busy) return;
+      this.draft.emblem = button.dataset.emblem;
+      this.dirty = true;
+      this.renderEditor();
+      this.renderFooter();
       return;
     }
     if (button.dataset.ship) {
@@ -239,6 +248,7 @@ export class FleetFormationView {
       await this.save(this.selectedId, {
         name: this.draft.name,
         ships: this.draft.ships,
+        emblem: this.draft.emblem,
         expectedRevision: this.draft.revision,
       });
       this.dirty = false;
@@ -260,6 +270,7 @@ export class FleetFormationView {
       this.scope, state.planet.id, state.fleetFormations,
       state.fleetMovements.map((m) => [m.id, m.status]),
       state.fleet,
+      state.entitlements?.emblems,
       state.planets.map((p) => [p.population?.count, p.fleetSupport]),
     ]);
     if (!force && signature === this.signature) return;
@@ -269,7 +280,7 @@ export class FleetFormationView {
         this.selectedId = visible[0]?.id || null;
       const f = this.selected();
       this.draft = f
-        ? { name: f.name, ships: { ...f.ships }, revision: f.revision }
+        ? { name: f.name, ships: { ...f.ships }, revision: f.revision, emblem: f.emblem || "" }
         : null;
     }
     this.list.innerHTML =
@@ -278,7 +289,7 @@ export class FleetFormationView {
         .map((f) => {
           const current = String(f.originPlanetId) === String(state.planet.id);
           const status = formationStatus(f, state);
-          return `<button type="button" class="formation-card ${this.selectedId === f.id ? "is-selected" : ""}" data-formation="${escapeHtml(f.id)}" aria-pressed="${this.selectedId === f.id}"><div class="formation-card-images">${shipImages(f.ships) || '<span class="empty-fleet-symbol">＋</span>'}</div><div class="formation-card-title"><strong>${escapeHtml(f.name)}</strong><span class="fleet-status ${status === "대기" ? "ready" : ""}">${status}</span></div><small>${formatAmount(profileOf(f.ships).ships)}척 · 승무원 ${formatAmount(f.crew || 0)}명 · ${current ? "현재 행성" : escapeHtml(state.planets.find((p) => String(p._id) === String(f.originPlanetId))?.name || "다른 행성")}</small></button>`;
+          return `<button type="button" class="formation-card ${this.selectedId === f.id ? "is-selected" : ""}" data-formation="${escapeHtml(f.id)}" aria-pressed="${this.selectedId === f.id}"><div class="formation-card-images">${shipImages(f.ships) || '<span class="empty-fleet-symbol">＋</span>'}</div><div class="formation-card-title"><strong>${f.emblem ? emblemSvg(f.emblem, { size: 18 }) + " " : ""}${escapeHtml(f.name)}</strong><span class="fleet-status ${status === "대기" ? "ready" : ""}">${status}</span></div><small>${formatAmount(profileOf(f.ships).ships)}척 · 승무원 ${formatAmount(f.crew || 0)}명 · ${current ? "현재 행성" : escapeHtml(state.planets.find((p) => String(p._id) === String(f.originPlanetId))?.name || "다른 행성")}</small></button>`;
         })
         .join("");
     fillThumbnails(this.list);
@@ -348,6 +359,7 @@ export class FleetFormationView {
       <p class="fleet-notice">기본 10명 + 함선 100척당 1명. 무인 함선만 있으면 0명입니다. 편성 저장 시 승무원을 행성 인구에서 배치합니다. 함선을 줄이거나 해산하면 복귀하며, 귀환 후에도 함대에 남습니다. 정박·출격 모두 유지비가 발생합니다.</p>
       ${planet?.fleetSupport?.shortages?.length ? '<p class="fleet-notice">보급 부족 · 식량·금속·중수소를 확보하기 전에는 출격할 수 없습니다.</p>' : ""}
       ${f.notice ? `<p class="fleet-notice">${escapeHtml(f.notice)}</p>` : ""}
+      ${this.emblemPickerHtml(locked)}
       ${
         locked
           ? '<p class="fleet-notice">임무 중인 함대는 귀환 후 편집할 수 있습니다.</p>'
@@ -365,6 +377,15 @@ export class FleetFormationView {
       <div class="formation-footer"></div>`;
     fillThumbnails(this.editor);
     this.renderFooter();
+  }
+  /** Emblem choices: none, the free ones and any bought in the shop. */
+  emblemPickerHtml(locked) {
+    const owned = this.getState().entitlements?.emblems || [];
+    const current = this.draft?.emblem || "";
+    const options = usableEmblems(owned);
+    const buttons = ['<button type="button" class="emblem-option" data-emblem="" aria-pressed="' + (current === "") + '" ' + (locked ? "disabled" : "") + ' title="문장 없음">없음</button>']
+      .concat(options.map((id) => `<button type="button" class="emblem-option" data-emblem="${escapeHtml(id)}" aria-pressed="${current === id}" ${locked ? "disabled" : ""} title="${escapeHtml(EMBLEMS[id].name)}">${emblemSvg(id, { size: 26, label: false })}<span class="sr-only">${escapeHtml(EMBLEMS[id].name)}</span></button>`));
+    return `<div class="ship-picker-heading"><h4>함대 문장</h4><span>상점에서 더 얻을 수 있습니다</span></div><div class="emblem-picker" role="group" aria-label="함대 문장">${buttons.join("")}</div>`;
   }
   renderFooter() {
     this.message.textContent = this.error || "";

@@ -48,10 +48,10 @@ const DEFAULT_COMBAT_CLASSES = {
 class CombatService {
   constructor() {}
   random() { return battleRandom.getStore()?.() ?? Math.random(); }
-  async simulateBattle8Wave(attackerDeck, defenderDeck, techs, maxRoundsOverride = null, seed = 'legacy') {
+  async simulateBattle8Wave(attackerDeck, defenderDeck, techs, maxRoundsOverride = null, seed = 'legacy', options = {}) {
     let state = Array.from(seed).reduce((n,c) => (Math.imul(n,31)+c.charCodeAt(0))>>>0, 2166136261);
     const rng = () => { state = (state + 0x6D2B79F5) >>> 0; let n = state; n = Math.imul(n ^ n >>> 15, n | 1); n ^= n + Math.imul(n ^ n >>> 7, n | 61); return ((n ^ n >>> 14) >>> 0) / 4294967296; };
-    return battleRandom.run(rng, () => this.simulateWaves(attackerDeck, defenderDeck, techs, maxRoundsOverride));
+    return battleRandom.run(rng, () => this.simulateWaves(attackerDeck, defenderDeck, techs, maxRoundsOverride, options));
   }
 
   getCombatClass(entityType) {
@@ -67,8 +67,17 @@ class CombatService {
     return 1.0;
   }
 
-  async simulateWaves(attackerDeck, defenderDeck, techs, maxRoundsOverride = null) {
+  /**
+   * @param {object} [options]
+   * @param {Record<string, { stats: object, currentHull?: number[] }>} [options.inlineUnits]
+   *   Defender units that are not in the catalog (event monsters). `currentHull` carries damage
+   *   from earlier battles; omitted means every unit is undamaged.
+   */
+  async simulateWaves(attackerDeck, defenderDeck, techs, maxRoundsOverride = null, options = {}) {
     const config = await GameConfig.getConfig();
+    const inlineUnits = options.inlineUnits || {};
+    let defenderHullDamage = 0;
+    const firedAmbushers = {}; // defenders that ambushed are still alive afterwards
     const rounds = [];
     
     let attackerCarry = {};
@@ -102,10 +111,10 @@ class CombatService {
       const defenders = dSlot?.ships || (dSlot?.shipType ? { [dSlot.shipType]: dSlot.shipCount } : {});
       const defenses = dSlot?.defense || (dSlot?.defenseType ? { [dSlot.defenseType]: dSlot.defenseCount } : {});
       for (const [type, count] of Object.entries({ ...defenders, ...defenses })) {
-        const force = this.initializeUnit(type, count, techs.defender);
+        const force = this.initializeUnit(type, count, techs.defender, inlineUnits[type]);
         if (!force) continue;
         waveState.defenderForces[type] = force;
-        totalInitialDefender[type] = (totalInitialDefender[type] || 0) + count;
+        totalInitialDefender[type] = (totalInitialDefender[type] || 0) + force.count;
       }
 
       const hasAttacker = Object.keys(waveState.attackerForces).length > 0;
@@ -114,6 +123,7 @@ class CombatService {
       // 3. Ambush Phase (Free Fire)
       if (hasAttacker && Object.keys(ambushForces).length > 0) {
         const ambushResult = this.executeFire(ambushForces, waveState.attackerForces, 2.0); // 2.0x Backstab Multiplier
+        this.mergeForcesDict(firedAmbushers, ambushForces);
         waveState.attackerForces = ambushResult.remaining;
         waveState.ambushAttacks.push({
           damage: ambushResult.damage,
@@ -129,6 +139,7 @@ class CombatService {
       if (hasAttackerAfterAmbush && hasDefender) {
         // Attacker shoots
         const atkResult = this.executeFire(waveState.attackerForces, waveState.defenderForces, 1.0);
+        defenderHullDamage += atkResult.hullDamage;
         waveState.defenderForces = atkResult.remaining;
 
         // Defender shoots back
@@ -168,12 +179,22 @@ class CombatService {
         totalDefenderLosses[type] = totalInitialDefender[type] - (finalDefender[type] || 0);
     }
 
-    const debrisField = this.calculateDebris(totalAttackerLosses, totalDefenderLosses, config.combatSettings?.debrisFieldPercentage || 30);
+    const debrisField = this.calculateDebris(totalAttackerLosses, totalDefenderLosses, config.combatSettings?.debrisFieldPercentage ?? 30, { includeDefense: Boolean(config.combatSettings?.defenseToDebris) });
     const winner = this.determineWinner8Wave(finalAttacker, finalDefender, totalInitialAttacker);
+
+    // Surviving defenders with their remaining hull, wherever they ended up.
+    const defenderRemaining = {};
+    for (const forces of [...rounds.map((round) => round.defenderForces), ambushForces, firedAmbushers]) {
+      for (const [type, force] of Object.entries(forces)) {
+        (defenderRemaining[type] ||= []).push(...force.currentHull);
+      }
+    }
 
     return {
       rounds,
       winner,
+      defenderRemaining,
+      defenderHullDamage,
       attackerForces: finalAttacker,
       defenderForces: finalDefender,
       attackerLosses: totalAttackerLosses,
@@ -184,7 +205,24 @@ class CombatService {
     };
   }
 
-  initializeUnit(unitType, count, techs) {
+  initializeUnit(unitType, count, techs, inline = null) {
+    if (inline) {
+      const bonus = (key) => 1 + (techs?.[key] || 0) * 0.1;
+      const stats = inline.stats;
+      const hull = Math.floor(stats.hull * bonus('armor'));
+      const hulls = inline.currentHull ? [...inline.currentHull] : Array(Math.max(0, count)).fill(hull);
+      if (hulls.length === 0) return null;
+      return {
+        count: hulls.length,
+        hull,
+        shield: Math.floor(stats.shield * bonus('shield')),
+        attack: Math.floor(stats.attack * bonus('weapons')),
+        rapidFire: stats.rapidFire || {},
+        isDefense: false,
+        combatClass: stats.combatClass || COMBAT_CLASSES.HEAVY,
+        currentHull: hulls
+      };
+    }
     if (count <= 0) return null;
     const definition = entityConfigService.getEntity('ship', unitType) || 
                        entityConfigService.getEntity('defense', unitType);
@@ -224,6 +262,7 @@ class CombatService {
 
   executeFire(attacker, defender, globalMultiplier = 1.0) {
     let totalDamage = 0;
+    let hullDamage = 0; // damage that actually reduced a hull (no shield blocking, no overkill)
     const remaining = this.cloneForces(defender);
     
     for (const [attackerType, attackerData] of Object.entries(attacker)) {
@@ -253,6 +292,7 @@ class CombatService {
       if (defenderTypes.length === 0) break;
       
       for (const shot of shots) {
+        // The last defender can fall mid-volley; remaining shots have nothing to hit.
         if (defenderTypes.length === 0) break;
         const targetType = defenderTypes[Math.floor(this.random() * defenderTypes.length)];
         const target = remaining[targetType];
@@ -275,6 +315,7 @@ class CombatService {
           }
         }
         
+        hullDamage += Math.min(Math.max(target.currentHull[targetIndex], 0), damageToHull);
         target.currentHull[targetIndex] -= damageToHull;
         
         if (target.currentHull[targetIndex] <= 0) {
@@ -290,7 +331,7 @@ class CombatService {
       }
     }
     
-    return { remaining, damage: totalDamage };
+    return { remaining, damage: totalDamage, hullDamage };
   }
   
   determineWinner8Wave(finalAttacker, finalDefender, initialAttacker) {
@@ -304,14 +345,24 @@ class CombatService {
     return 'attacker';
   }
 
-  calculateDebris(attackerLosses, defenderLosses, debrisFieldPercentage = 30) {
-    const debrisRatio = debrisFieldPercentage / 100;
-    const metal = Math.floor((this.calculateResourceValue(attackerLosses) + 
-                              this.calculateResourceValue(defenderLosses)) * debrisRatio);
-    return {
-      metal: Math.floor(metal * 0.7),
-      crystal: Math.floor(metal * 0.3)
-    };
+  /**
+   * Wreckage left by a battle: a share of the metal and crystal cost of every destroyed
+   * ship on both sides. Defense installations only count when defenseToDebris is on.
+   */
+  calculateDebris(attackerLosses, defenderLosses, debrisFieldPercentage = 30, { includeDefense = false } = {}) {
+    const ratio = Math.max(0, debrisFieldPercentage) / 100;
+    const total = { metal: 0, crystal: 0 };
+    for (const losses of [attackerLosses, defenderLosses]) {
+      for (const [type, count] of Object.entries(losses || {})) {
+        const ship = entityConfigService.getEntity('ship', type);
+        const definition = ship || (includeDefense ? entityConfigService.getEntity('defense', type) : null);
+        const cost = definition?.costModel?.baseCost;
+        if (!cost || !(count > 0)) continue;
+        total.metal += (cost.metal || 0) * count;
+        total.crystal += (cost.crystal || 0) * count;
+      }
+    }
+    return { metal: Math.floor(total.metal * ratio), crystal: Math.floor(total.crystal * ratio) };
   }
   
   calculateResourceValue(losses) {

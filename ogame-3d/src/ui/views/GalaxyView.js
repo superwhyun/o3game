@@ -1,7 +1,7 @@
 /**
  * Star-system view: orbital chart with a selected-planet detail card.
  */
-import { escapeHtml } from '../dom.js';
+import { escapeHtml, formatAmount } from '../dom.js';
 import { FleetTrafficController } from './FleetTrafficController.js';
 import { FleetTrafficLayer } from './FleetTrafficLayer.js';
 import { OrbitChart, relationOf, planetNameOf } from './OrbitChart.js';
@@ -157,20 +157,28 @@ export class GalaxyView {
     }
     const relation = relationOf(position);
     const { galaxy, system } = this.coords;
-    const action = {
+    const monsterAction = '<button type="button" class="cmd-btn primary" data-action="target">괴수 공격 목표 지정</button>';
+    const action = position.monster ? monsterAction : {
       own: '<button type="button" class="cmd-btn" disabled>아군 행성</button>',
       other: '<button type="button" class="cmd-btn primary" data-action="target">공격 · 함대운용</button>',
       empty: '<button type="button" class="cmd-btn primary" data-action="colonize">식민선 보내기</button><button type="button" class="cmd-btn" data-action="target">개척 함대 선택</button>'
     }[relation];
+    const extra = `${position.monster ? `
+        <div class="spec-row"><dt>괴수</dt><dd>${escapeHtml(position.monster.name)}</dd></div>
+        <div class="spec-row"><dt>체력</dt><dd>${Number(position.monster.hpPercent).toFixed(1)}%</dd></div>
+        <div class="spec-row"><dt>CGC 보상 풀</dt><dd>${escapeHtml(position.monster.pool)} CGC</dd></div>
+        <div class="spec-row"><dt>이벤트 종료</dt><dd>${new Date(position.monster.endsAt).toLocaleString('ko-KR')}</dd></div>` : ''}${position.debris ? `
+        <div class="spec-row"><dt>전투 잔해</dt><dd>금속 ${formatAmount(position.debris.metal)} · 수정 ${formatAmount(position.debris.crystal)}</dd></div>` : ''}`;
 
     this.detailEl.innerHTML = `
       <p class="detail-kicker">[${galaxy}:${system}:${position.position}] · 제${position.position}궤도</p>
-      <h3 class="slot-detail-title">${escapeHtml(planetNameOf(position))}</h3>
+      <h3 class="slot-detail-title">${position.monster ? escapeHtml(position.monster.name) : escapeHtml(planetNameOf(position))}</h3>
       <dl class="spec-list single">
         <div class="spec-row"><dt>관계</dt><dd class="rel-${relation}">${position.planet?.isPirate ? `해적 거점 · Lv.${position.planet.pirateLevel}` : RELATION_LABEL[relation]}</dd></div>
         ${position.planet ? `
           <div class="spec-row"><dt>사령관</dt><dd>${escapeHtml(position.planet.username)}</dd></div>
           <div class="spec-row"><dt>통신</dt><dd>${position.planet.isOnline ? '접속 중' : '부재'}</dd></div>` : ''}
+        ${extra}
       </dl>
       <div class="slot-detail-actions">${action}</div>`;
     this.onSelect?.(position, this.coords);

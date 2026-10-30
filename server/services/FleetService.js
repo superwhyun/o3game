@@ -44,6 +44,8 @@ function sameCoords(a, b) {
 function cleanOrder(input) {
   if (!["attack", "transport", "deploy", "colonize", "recycle"].includes(input.mission))
     fail("지원하지 않는 임무입니다.", 400, "INVALID_MISSION");
+  if (input.mission === "colonize" && input.formationId != null)
+    fail("개척은 성계도의 식민선 보내기를 이용하십시오. 개척 함대는 지원하지 않습니다.", 400, "INVALID_MISSION");
   const monsterTarget = input.mission === "attack" && input.target?.type === "monster";
   if (monsterTarget && !mongoose.isValidObjectId(input.target.eventId))
     fail("괴수를 다시 선택하십시오.", 400, "INVALID_ID");

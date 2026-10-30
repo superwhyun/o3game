@@ -221,7 +221,7 @@ function candidatesForPlanet(snapshot, catalog, galaxy, job) {
   }
   if (
     Object.entries(snapshot.unassignedShips || {}).some(
-      ([k, n]) => n > 0 && !["espionageProbe", "solarSatellite"].includes(k),
+      ([k, n]) => n > 0 && !["espionageProbe", "solarSatellite", "colonyShip"].includes(k),
     )
   ) {
     if (!fleets.some((f) => !Object.values(f.ships || {}).some((n) => n > 0)))
@@ -235,7 +235,7 @@ function candidatesForPlanet(snapshot, catalog, galaxy, job) {
       const ships = Object.fromEntries(
         Object.entries(snapshot.unassignedShips).filter(
           ([k, n]) =>
-            n > 0 && !["espionageProbe", "solarSatellite"].includes(k),
+            n > 0 && !["espionageProbe", "solarSatellite", "colonyShip"].includes(k),
         ),
       );
       const manned = Object.keys(ships).some(id => (catalog.entities.find(e => e.entityType === "ship" && e.entityId === id)?.stats?.crew || 0) > 0);
@@ -304,32 +304,6 @@ function candidatesForPlanet(snapshot, catalog, galaxy, job) {
       speed: 100,
       cargo: {},
     };
-    if (
-      f.ships?.colonyShip > 0 &&
-      snapshot.planets.length + pendingColonies <
-        colonyShipBudget(snapshot, job).limit &&
-      (planet.populationState?.count || planet.population?.count || 0) >= 10
-    ) {
-      for (const slot of slots
-        .filter(
-          (s) =>
-            s.scouted && !s.occupied && !occupiedDestination("colonize", s),
-        )
-        .slice(0, 3))
-        add(
-          `[${slot.galaxy}:${slot.system}:${slot.position}] 개척 · 인구 10명`,
-          {
-            path: "/api/game/fleets",
-            body: {
-              ...base,
-              requestId: randomUUID(),
-              mission: "colonize",
-              colonists: 10,
-              destination: destinationOf(slot),
-            },
-          },
-        );
-    }
     if (
       job.allowAttacks &&
       (job.behaviorScores?.attack ?? 1) > 0 &&

@@ -276,7 +276,7 @@ test("multi-tab updates preserve a dirty draft and expose revision conflicts", a
   await second.close();
 });
 
-test('colony fleet drag onto unclaimed planet creates colony and consumes one colony ship', async ({ page }) => {
+test('fleet drag onto an unclaimed planet directs players to a single colony ship', async ({ page }) => {
   execFileSync(process.execPath, ['server/scripts/seedFleetPreview.js'], {
     cwd: new URL('../../', import.meta.url),
     env: { ...process.env, FLEET_PREVIEW_URI: uri, JWT_SECRET: 'isolated-fleet-preview-secret-not-for-production-2026' },
@@ -290,30 +290,8 @@ test('colony fleet drag onto unclaimed planet creates colony and consumes one co
   await save(page);
   await page.locator('.holo-btn[data-view="combat"]').click();
   await page.waitForFunction(() => window.uiManager.strikeMap.positions.length === 15);
-  const card = await page.locator('[data-combat-fleet]').boundingBox();
-  const target = await page.locator('.orbit-host [data-slot="9"]').boundingBox();
-  await page.mouse.move(card.x + card.width / 2, card.y + card.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 20 });
-  await page.mouse.up();
-  await expect(page.locator('[name="mission"]')).toHaveValue('colonize');
-  await page.locator('[data-confirm="launch"]').click();
-  await expect(page.locator('[data-combat-fleet]')).toHaveCount(0);
-  await expect(page.locator('[data-movement]')).toContainText('식민지 개척');
-  await fastArrival();
-  await expect.poll(async () => (await User.findById(fixture.user.id)).planets.length, { timeout: 30000 }).toBe(2);
-  await expect(page.locator('[data-movement]')).toHaveCount(0, { timeout: 30000 });
-  const user = await User.findById(fixture.user.id);
-  expect(user.planets[0].fleet.colonyShip).toBe(0);
-  expect(user.planets[1].fleet.colonyShip).toBe(1);
-  expect(user.planets[1].planet).toBe(9);
-  expect(String(user.fleetFormations[0].originPlanetId)).toBe(String(user.planets[1]._id));
-  const Movement = require('../../server/models/FleetMovement');
-  const mission = await Movement.findOne({userId:user._id,mission:'colonize'});
-  expect(mission.status).toBe('completed');expect(mission.returnTime).toBeNull();
-  await page.reload();
-  await expect(page.locator('#planet-select option')).toHaveCount(2);
-  await page.locator('#planet-select').selectOption('1');
-  await page.locator('.holo-btn[data-view="combat"]').click();
-  await expect(page.locator('[data-combat-fleet]')).toHaveCount(1);
+  await page.evaluate(() => window.uiManager.strikeMap.openConfirm(9));
+  await expect(page.locator('.strike-confirm')).toContainText('성계도의 식민선 보내기');
+  await expect(page.locator('[data-confirm="launch"]')).toHaveCount(0);
+  expect((await User.findById(fixture.user.id)).planets).toHaveLength(1);
 });

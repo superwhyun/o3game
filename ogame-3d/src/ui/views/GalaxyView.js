@@ -161,7 +161,7 @@ export class GalaxyView {
     const action = position.monster ? monsterAction : {
       own: '<button type="button" class="cmd-btn" disabled>아군 행성</button>',
       other: '<button type="button" class="cmd-btn primary" data-action="target">공격 · 함대운용</button>',
-      empty: '<button type="button" class="cmd-btn primary" data-action="colonize">식민선 보내기</button><button type="button" class="cmd-btn" data-action="target">개척 함대 선택</button>'
+      empty: '<button type="button" class="cmd-btn primary" data-action="colonize">식민선 보내기</button>'
     }[relation];
     const extra = `${position.monster ? `
         <div class="spec-row"><dt>괴수</dt><dd>${escapeHtml(position.monster.name)}</dd></div>

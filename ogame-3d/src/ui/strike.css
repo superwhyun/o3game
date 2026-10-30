@@ -361,6 +361,10 @@
     border-top: 1px solid var(--line);
   }
 
+  .strike-side > .combat-fleet-roster {
+    order: -1;
+  }
+
   .strike-head {
     padding-inline: 14px;
   }

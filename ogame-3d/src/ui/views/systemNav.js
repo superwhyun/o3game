@@ -1,4 +1,5 @@
 import '../system-navigation.css';
+import { comparePlanetCoordinates } from '../../utils/planetCoordinates.js';
 
 /**
  * Galaxy/system navigation controls (prev / next / number inputs / home),
@@ -83,48 +84,77 @@ export function bindSystemNav(controls, { current, home, go, getPlanets = () => 
   const apply = () => navigate(clampCoords({ galaxy: Number(galaxy.value), system: Number(system.value) }));
   controls.prev?.addEventListener('click', () => navigate(stepCoords(current() || home(), -1)));
   controls.next?.addEventListener('click', () => navigate(stepCoords(current() || home(), 1)));
-  controls.home?.addEventListener('click', () => navigate(home()));
   applyButton.addEventListener('click', apply);
   picker.querySelector('[data-picker-close]').addEventListener('click', close);
-  picker.addEventListener('toggle', () => trigger.setAttribute('aria-expanded', String(picker.matches(':popover-open'))));
-  const positionPicker = () => {
-    const rect = trigger.getBoundingClientRect();
-    const width = Math.min(340, innerWidth - 24);
-    picker.style.width = `${width}px`;
-    picker.style.left = `${Math.max(12, Math.min(rect.right - width, innerWidth - width - 12))}px`;
-    picker.style.top = `${Math.min(rect.bottom + 8, Math.max(12, innerHeight - picker.offsetHeight - 12))}px`;
+  const syncExpanded = () => {
+    const open = picker.matches(':popover-open');
+    trigger.setAttribute('aria-expanded', String(open && picker.dataset.mode !== 'planets'));
+    controls.home?.setAttribute('aria-expanded', String(open && picker.dataset.mode === 'planets'));
   };
-  trigger.addEventListener('click', event => {
+  picker.addEventListener('toggle', syncExpanded);
+  let anchor = trigger;
+  const positionPicker = () => {
+    if (!picker.matches(':popover-open')) return;
+    const rect = anchor.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const left = viewport?.offsetLeft || 0;
+    const top = viewport?.offsetTop || 0;
+    const viewportWidth = viewport?.width || innerWidth;
+    const viewportHeight = viewport?.height || innerHeight;
+    const width = Math.min(340, viewportWidth - 24);
+    picker.style.width = `${width}px`;
+    picker.style.maxHeight = `${Math.max(0, viewportHeight - 24)}px`;
+    picker.style.left = `${Math.max(left + 12, Math.min(rect.right - width, left + viewportWidth - width - 12))}px`;
+    picker.style.top = `${Math.max(top + 12, Math.min(rect.bottom + 8, top + viewportHeight - picker.getBoundingClientRect().height - 12))}px`;
+  };
+  const openPicker = (event, mode, button) => {
     event.preventDefault();
-    if (picker.matches(':popover-open')) { close(); return; }
+    if (picker.matches(':popover-open') && picker.dataset.mode === mode) { close(); return; }
+    anchor = button;
+    picker.dataset.mode = mode;
+    const title = mode === 'planets' ? '내 행성' : '이동할 성계';
+    picker.querySelector('header strong').textContent = title;
+    picker.setAttribute('aria-label', mode === 'planets' ? '내 행성 선택' : '이동할 성계 선택');
     const coords = current() || home();
     if (!dirty) { galaxy.value = coords.galaxy; system.value = coords.system; }
     range.value = system.value;
     const shortcuts = picker.querySelector('.system-shortcuts div');
     shortcuts.replaceChildren();
-    const planets = getPlanets();
+    const owned = getPlanets();
+    const planets = [...(owned.length ? owned : [home()])].filter(Boolean)
+      .sort(comparePlanetCoordinates);
     picker.querySelector('.system-shortcuts').hidden = !planets.length;
     for (const planet of planets) {
       const button = document.createElement('button');
       button.type = 'button';
       const name = document.createElement('span');
-      name.textContent = planet.name;
+      name.textContent = planet.name || '내 행성';
       const coordinate = document.createElement('small');
       coordinate.textContent = `[${planet.galaxy}:${planet.system}:${planet.planet}]`;
       button.append(name, coordinate);
       button.addEventListener('click', () => navigate(planet));
       shortcuts.append(button);
     }
-    picker.showPopover();
+    if (!picker.matches(':popover-open')) picker.showPopover();
     positionPicker();
-    trigger.setAttribute('aria-expanded', 'true');
-  });
-  window.addEventListener('resize', close);
+    syncExpanded();
+  };
+  trigger.addEventListener('click', event => openPicker(event, 'coordinates', trigger));
+  if (controls.home) {
+    controls.home.setAttribute('popovertarget', picker.id);
+    controls.home.setAttribute('aria-expanded', 'false');
+    controls.home.setAttribute('aria-label', '내 행성');
+    controls.home.addEventListener('click', event => openPicker(event, 'planets', controls.home));
+  }
+  // Opening the mobile keyboard resizes the viewport without leaving the picker.
+  window.addEventListener('resize', positionPicker);
+  window.visualViewport?.addEventListener('resize', positionPicker);
+  window.visualViewport?.addEventListener('scroll', positionPicker);
   // Dismiss when switching views or scrolling the original navigation out of sight.
   document.addEventListener('scroll', event => {
     if (!picker.matches(':popover-open') || picker.contains(event.target)) return;
-    const rect = trigger.getBoundingClientRect();
-    if (rect.bottom < 0 || rect.top > innerHeight) close();
+    const rect = anchor.getBoundingClientRect();
+    if (!picker.contains(document.activeElement) && (rect.bottom < 0 || rect.top > innerHeight)) close();
     else positionPicker();
   }, true);
 

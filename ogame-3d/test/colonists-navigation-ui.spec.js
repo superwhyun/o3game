@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 async function previewMap(page) {
-  await page.route('**/api/auth/has-admin', r => r.fulfill({ json: { hasAdmin: true } }));
+  await page.route('**/api/auth/check-admin', r => r.fulfill({ json: { hasAdmin: true } }));
   await page.goto('/');
   await page.waitForFunction(() => window.uiManager);
   await page.evaluate(async () => {
@@ -22,23 +22,40 @@ async function previewMap(page) {
   });
 }
 
-test('mobile colony confirmation defaults to ten people, preserves edits and sends selected population', async ({ page }) => {
+test('mobile colonization uses a single ship instead of a fleet', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await previewMap(page);
-  const count = page.locator('#colonist-map-preview [name="colonists"]');
+  const root = page.locator('#colonist-map-preview');
+  await expect(root.locator('.strike-confirm')).toContainText('성계도의 식민선 보내기');
+  await expect(root.locator('[data-confirm=launch]')).toHaveCount(0);
+  await page.evaluate(async () => {
+    const { DirectColonyView } = await import('/src/ui/views/DirectColonyView.js');
+    const root = document.createElement('section');
+    root.id = 'direct-colony-preview';
+    document.querySelector('#colonist-map-preview').replaceChildren(root);
+    new DirectColonyView(root, {
+      state: { planet: { id: 'home', name: '본거지', galaxy: 1, system: 1, planet: 1, populationState: { count: 30 } }, resources: { metal: 100, crystal: 100, deuterium: 100 } },
+      destination: { galaxy: 1, system: 1, planet: 4 },
+      onLaunch: async order => {
+        window.previewOrders.push(order);
+        if (window.failPreviewLaunch) throw Object.assign(new Error('인구가 부족합니다.'), { status: 400 });
+      },
+      onClose: () => { root.hidden = true; },
+    });
+  });
+  const count = root.locator('[name=colonists]');
   await expect(count).toHaveValue('10');
-  await expect(count).toHaveAttribute('max', '30');
   await count.fill('7');
-  await page.evaluate(() => { window.previewSpeed.serverSpeed = 100; window.colonistMap.refresh(); });
-  await expect(count).toHaveValue('7');
   await page.evaluate(() => { window.failPreviewLaunch = true; });
-  await page.locator('#colonist-map-preview [data-confirm=launch]').click();
-  await expect(page.locator('#colonist-map-preview [role=alert]')).toContainText('인구가 부족');
+  await root.locator('button[type=submit]').click();
+  await expect(root.locator('.direct-colony-form > [role=status]')).toContainText('인구가 부족');
   await expect(count).toHaveValue('7');
   await page.evaluate(() => { window.failPreviewLaunch = false; });
-  await page.locator('#colonist-map-preview [data-confirm=launch]').click();
-  await expect(page.locator('#colonist-map-preview .strike-confirm')).toBeHidden();
-  expect(await page.evaluate(() => window.previewOrders.map(order => order.colonists))).toEqual([7, 7]);
+  await root.locator('button[type=submit]').click();
+  await expect(page.locator('#direct-colony-preview')).toBeHidden();
+  expect(await page.evaluate(() => window.previewOrders.map(order => ({ colonists: order.colonists, formationId: order.formationId })))).toEqual([
+    { colonists: 7, formationId: undefined }, { colonists: 7, formationId: undefined },
+  ]);
 });
 
 test('mobile coordinate drafts survive blur and refresh, apply by button and Enter', async ({ page }) => {
@@ -47,7 +64,8 @@ test('mobile coordinate drafts survive blur and refresh, apply by button and Ent
   const root = page.locator('#colonist-map-preview');
   const galaxy = root.locator('[data-nav=galaxy]');
   const system = root.locator('[data-nav=system]');
-  await galaxy.fill('2');
+  await root.locator('.system-location').click();
+  await galaxy.selectOption('2');
   await system.fill('15');
   await system.blur();
   await page.evaluate(() => window.colonistMap.nav.sync({ galaxy: 1, system: 1 }));
@@ -56,6 +74,7 @@ test('mobile coordinate drafts survive blur and refresh, apply by button and Ent
   expect(await page.evaluate(() => window.colonistMap.coords)).toEqual({ galaxy: 1, system: 1 });
   await root.locator('[data-nav=apply]').click();
   expect(await page.evaluate(() => window.colonistMap.coords)).toEqual({ galaxy: 2, system: 15 });
+  await root.locator('.system-location').click();
   await system.fill('16');
   await system.press('Enter');
   expect(await page.evaluate(() => window.colonistMap.coords)).toEqual({ galaxy: 2, system: 16 });
@@ -67,12 +86,13 @@ test('mobile coordinate drafts survive blur and refresh, apply by button and Ent
 
 test('star-system view preserves both mobile inputs until the move button is tapped', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 844 });
-  await page.route('**/api/auth/has-admin', r => r.fulfill({ json: { hasAdmin: true } }));
+  await page.route('**/api/auth/check-admin', r => r.fulfill({ json: { hasAdmin: true } }));
   await page.route('**/api/game/galaxy?*', r => r.fulfill({ json: { positions: [] } }));
   await page.goto('/');
   await page.waitForFunction(() => window.uiManager?.hasAdmin === true);
   await page.evaluate(() => { window.uiManager.showDashboard(); window.uiManager.switchView('galaxy'); });
-  await page.locator('#galaxy-input').fill('2');
+  await page.locator('#galaxy-panel .system-location').click();
+  await page.locator('#galaxy-input').selectOption('2');
   await page.locator('#system-input').fill('15');
   await page.locator('#system-input').blur();
   await page.evaluate(() => window.uiManager.galaxyView.nav.sync({ galaxy: 1, system: 1 }));

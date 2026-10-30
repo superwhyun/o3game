@@ -39,9 +39,13 @@ export function createDragArrow() {
      * @param {{x:number,y:number}} to
      * @param {'valid'|'invalid'|'idle'} state
      * @param {string} [label]
+     * @param {{top:number,right:number,bottom:number,left:number}|null} [clipRect] Chart preview bounds.
      */
-    update(from, to, state = 'idle', label = '') {
+    update(from, to, state = 'idle', label = '', clipRect = null) {
       svg.style.display = '';
+      svg.style.clipPath = clipRect
+        ? `inset(${Math.max(0, clipRect.top)}px ${Math.max(0, innerWidth - clipRect.right)}px ${Math.max(0, innerHeight - clipRect.bottom)}px ${Math.max(0, clipRect.left)}px)`
+        : '';
       svg.dataset.state = state;
       const dx = to.x - from.x;
       const dy = to.y - from.y;

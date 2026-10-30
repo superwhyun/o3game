@@ -53,7 +53,7 @@ for (const width of [320, 390, 1440]) {
   });
 }
 
-test('owned targets offer deployment/transport, foreign and pirate targets only attack, empty targets colonize', async ({ page }) => {
+test('owned targets offer deployment/transport, foreign and pirate targets only attack, empty targets require a direct colony ship', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   let catalogUrl;
   page.on('response', r => { if (/\/src\/data\/catalog\.js(?:\?|$)/.test(r.url())) catalogUrl = r.url(); });
@@ -116,8 +116,9 @@ test('owned targets offer deployment/transport, foreign and pirate targets only 
   await page.evaluate(() => { window.gameState.planet.fleetSupport.shortages = []; window.uiManager.strikeMap.refresh(); });
   await expect(confirm.locator('[data-confirm=launch]')).toBeEnabled();
   await page.evaluate(() => window.uiManager.strikeMap.openConfirm(12));
-  await expect(confirm.locator('[name=mission]')).toHaveValue('colonize');
-  await expect(confirm.locator('[name=colonists]')).toHaveValue('10');
+  await expect(confirm).toContainText('성계도의 식민선 보내기');
+  await expect(confirm.locator('[data-confirm=launch]')).toHaveCount(0);
+  await expect(confirm.locator('[name=colonists]')).toHaveCount(0);
   await page.evaluate(() => window.uiManager.strikeMap.openConfirm(7));
   await expect(confirm).toContainText('출발지');
   await expect(confirm.locator('[data-confirm=launch]')).toHaveCount(0);
@@ -156,4 +157,39 @@ test('owned targets offer deployment/transport, foreign and pirate targets only 
   await expect(page.locator('[data-formation]')).toHaveCount(2);
   await page.locator('[data-formation=remote]').click();
   await expect(page.locator('.formation-editor')).toContainText('제2행성');
+  await page.evaluate(async () => {
+    window.uiManager.switchView('combat');
+    await window.uiManager.strikeMap.show({ galaxy: 2, system: 10 }, { targetSlot: 7 });
+  });
+  expect(await page.evaluate(() => {
+    const map = window.uiManager.strikeMap;
+    const chart = map.chart.svg.getBoundingClientRect();
+    const origin = map.courseOrigin();
+    const roster = map.squad.root.getBoundingClientRect();
+    const host = map.chart.container.getBoundingClientRect();
+    const confirmation = map.confirmEl.getBoundingClientRect();
+    return roster.top >= host.bottom && roster.top - host.bottom <= 2
+      && roster.bottom <= confirmation.top
+      && origin.x >= chart.left && origin.x <= chart.right
+      && origin.y >= chart.top && origin.y <= chart.bottom;
+  })).toBe(true);
+  await page.locator('#strike-map .orbit-host').scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.uiManager.strikeMap.drawConfirmArrow());
+  expect(await page.locator('.course-overlay').last().evaluate(el => el.style.clipPath)).toContain('inset(');
+  await page.screenshot({ path: '/tmp/o3game-mobile-fleet-layout.png' });
+  // Once the map scrolls away, its preview must not cross the fleet or form.
+  await confirm.locator('[data-confirm=launch]').scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.uiManager.strikeMap.drawConfirmArrow());
+  await expect(page.locator('.course-overlay').last()).toBeHidden();
+  // An empty origin roster must not clear an owned destination during polling.
+  await page.evaluate(() => {
+    window.gameState.fleetFormations = [];
+    window.uiManager.switchView('combat');
+    window.uiManager.strikeMap.openConfirm(7);
+    window.uiManager.strikeMap.refresh();
+  });
+  await expect(confirm).toBeVisible();
+  await expect(confirm.locator('.mission-choice label')).toHaveCount(2);
+  await expect(confirm.locator('[data-confirm=launch]')).toBeDisabled();
+  expect(await page.evaluate(() => window.uiManager.strikeMap.target)).toBe(7);
 });

@@ -21868,7 +21868,7 @@
           "mission",
           "destination"
         ],
-        "description": "attack/transport 및 편성 개척은 formationId/expectedRevision 필수. colonize는 formationId 생략 또는 null로 미배정 식민선 1척을 직접 출격시킬 수 있으며 편성을 만들지 않습니다. attack/transport는 expectedTargetPlanetId 필수. colonists는 colonize에서 1 이상의 정수(기본 10), 그 외 생략 또는 0.",
+        "description": "편성 임무는 formationId/expectedRevision 필수. colonize는 formationId 생략 또는 null로 미배정 식민선 1척만 직접 출격합니다. 편성 개척은 400 INVALID_MISSION으로 거절합니다. attack/transport는 expectedTargetPlanetId 필수. colonists는 colonize에서 1 이상의 정수(기본 10), 그 외 생략 또는 0.",
         "oneOf": [
           {
             "required": [
@@ -21883,6 +21883,15 @@
               "expectedRevision": {
                 "type": "integer",
                 "minimum": 0
+              }
+            },
+            "not": {
+              "properties": {
+                "mission": {
+                  "enum": [
+                    "colonize"
+                  ]
+                }
               }
             }
           },

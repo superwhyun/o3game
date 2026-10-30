@@ -5,10 +5,10 @@
 .system-nav > button:focus-visible { outline:2px solid var(--gold-dim); outline-offset:-2px; }
 .system-nav .system-arrow { width:34px; font-size:23px; line-height:1; }
 .system-nav .system-location { padding:0 12px; font-size:13px; font-variant-numeric:tabular-nums; color:var(--text); white-space:nowrap; }
-.system-location::after { content:'⌄'; margin-left:10px; color:var(--text-faint); }
+.system-location::after, .system-home::after { content:'⌄'; margin-left:10px; color:var(--text-faint); }
 .system-nav .system-home { padding:0 12px; margin-left:3px; border-left:1px solid var(--line); border-radius:0 7px 7px 0; font-size:12px; white-space:nowrap; }
-.system-picker { position:fixed; inset:auto; margin:0; padding:18px; max-height:calc(100dvh - 24px); overflow:auto; border:1px solid #344256; border-radius:14px; background:#0d1622; color:var(--text); box-shadow:0 16px 50px #0009; font-family:var(--font-sans); }
-.system-picker:popover-open { display:grid; gap:12px; }
+.system-picker { position:fixed; inset:auto; margin:0; padding:18px; max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px); overflow-x:hidden; overflow-y:auto; border:1px solid #344256; border-radius:14px; background:#0d1622; color:var(--text); box-shadow:0 16px 50px #0009; font-family:var(--font-sans); }
+.system-picker:popover-open { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
 .system-picker:not(:popover-open) { display:none; }
 .system-picker::backdrop { background:transparent; }
 .system-picker header { display:flex; align-items:center; justify-content:space-between; }
@@ -19,16 +19,31 @@
 .system-picker-fields input, .system-picker-fields select { width:100%; min-width:0; height:42px; border:1px solid var(--line-strong); border-radius:7px; background:var(--ink-0); color:var(--text); padding:0 12px; font-size:14px; }
 .system-picker > input[type=range] { width:100%; height:28px; margin:0; accent-color:var(--gold); touch-action:pan-y; }
 .system-range-labels { display:flex; justify-content:space-between; margin-top:-12px; color:var(--text-faint); font-size:10px; }
-.system-shortcuts { border-top:1px solid var(--line); padding-top:12px; }
+.system-shortcuts { min-width:0; border-top:1px solid var(--line); padding-top:12px; }
 .system-shortcuts > span { color:var(--text-faint); font-size:11px; }
-.system-shortcuts > div { display:grid; max-height:156px; overflow:auto; margin-top:5px; }
-.system-shortcuts button { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; padding:9px 4px; min-height:38px; background:none; border:0; color:var(--text-dim); cursor:pointer; text-align:left; border-radius:5px; }
+.system-shortcuts > div { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; max-height:156px; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; margin-top:5px; }
+.system-shortcuts button { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; min-width:0; padding:9px 4px; min-height:38px; background:none; border:0; color:var(--text-dim); cursor:pointer; text-align:left; border-radius:5px; }
 .system-shortcuts button:hover { background:#ffffff09; color:var(--text); }
-.system-shortcuts button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.system-shortcuts button span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .system-shortcuts button small { color:var(--text-faint); font-variant-numeric:tabular-nums; flex:none; }
+.system-picker[data-mode="planets"] > .system-picker-fields,
+.system-picker[data-mode="planets"] > input[type=range],
+.system-picker[data-mode="planets"] > .system-range-labels,
+.system-picker[data-mode="planets"] > footer,
+.system-picker[data-mode="planets"] .system-shortcuts > span { display:none; }
+.system-picker[data-mode="planets"] { padding:10px; gap:6px; align-content:start; background:#0b1320; }
+.system-picker[data-mode="planets"] header { min-height:32px; padding:0 2px 6px 6px; border-bottom:1px solid #2b3e54; }
+.system-picker[data-mode="planets"] header strong { font-size:12px; line-height:1.2; color:var(--text-dim); }
+.system-picker[data-mode="planets"] header button { width:32px; height:32px; font-size:20px; line-height:1; }
+.system-picker[data-mode="planets"] .system-shortcuts { border-top:0; padding-top:0; }
+.system-picker[data-mode="planets"] .system-shortcuts > div { gap:6px; margin-top:0; }
+.system-picker[data-mode="planets"] .system-shortcuts button { min-height:44px; padding:8px 10px; border:1px solid #2b3e54; border-radius:7px; background:#172638; color:var(--text); font-size:14px; }
+.system-picker[data-mode="planets"] .system-shortcuts button:hover,
+.system-picker[data-mode="planets"] .system-shortcuts button:focus-visible { background:#223a50; border-color:var(--gold-dim); }
 .system-apply { width:100%; height:40px; color:#f0dfbb; background:#b8995720; border:1px solid #b8995740; border-radius:7px; cursor:pointer; font-size:13px; }
 .system-apply:hover { background:#b8995730; }
 @media (max-width:700px) {
+  .system-picker-fields input, .system-picker-fields select { font-size:16px; }
   .galaxy-nav.system-nav { width:auto; max-width:100%; }
   .galaxy-nav.system-nav > button { min-height:40px; height:40px; }
   .system-nav .system-location { padding:0 8px; font-size:12px; }
@@ -36,4 +51,8 @@
   .system-nav .system-arrow { width:30px; }
   .strike-head:has(.system-nav) { padding:12px; gap:10px; }
   .system-picker { padding:16px; }
+  .system-shortcuts button { display:grid; grid-template-columns:minmax(0,1fr); justify-items:start; gap:2px; padding:8px 4px; }
+  .system-shortcuts button span { width:100%; }
+  .system-shortcuts button small { font-size:11px; }
+  .system-picker[data-mode="planets"] .system-shortcuts > div { max-height:min(360px,50dvh); }
 }

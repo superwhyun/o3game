@@ -123,6 +123,7 @@ test("scout coordinates select the galaxy target, direct colony needs no formati
   await expect(page.locator("#galaxy-holo .slot-detail")).toContainText(
     "[2:300:9]",
   );
+  await expect(page.getByRole("button", { name: "개척 함대 선택", exact: true })).toHaveCount(0);
   await page.locator("#galaxy-holo [data-action=colonize]").click();
   await expect(page.locator(".direct-colony")).toContainText(
     "편성 없이 식민선 1척",

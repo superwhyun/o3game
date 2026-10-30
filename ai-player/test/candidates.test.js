@@ -67,7 +67,7 @@ test("fleet candidates respect attack opt-in and pending colony limit", () => {
       },
     ],
     fleetMovements: [],
-    unassignedShips: { espionageProbe: 1 },
+    unassignedShips: { espionageProbe: 1, colonyShip: 1 },
   };
   const catalog = {
     entities: [
@@ -102,8 +102,13 @@ test("fleet candidates respect attack opt-in and pending colony limit", () => {
   const colony = candidates.find((c) => c.command?.body?.mission === "colonize")
     .command.body;
   assert.equal(colony.colonists, 10);
-  assert.equal(colony.expectedRevision, 3);
+  assert.equal(colony.formationId, undefined);
+  assert.equal(colony.expectedRevision, undefined);
   assert.equal(colony.originPlanetId, "origin");
+  snapshot.unassignedShips.colonyShip = 0;
+  assert.ok(!candidatesFor(snapshot, catalog, galaxy, { maxColonies: 2 })
+    .some(candidate => candidate.command?.body?.mission === 'colonize'));
+  snapshot.unassignedShips.colonyShip = 1;
   assert.equal(
     candidates.find((c) => c.command?.path === "/api/game/scouts").command.body
       .destination.planet,

@@ -56,6 +56,15 @@ test(
         cargo: { metal: 100 },
       };
       const movement = await fleets.launch(user._id, order);
+      await assert.rejects(
+        fleets.launch(user._id, {
+          ...order,
+          requestId: randomUUID(),
+          formationId: String(f.formationId),
+          expectedRevision: 2,
+        }),
+        (error) => error.code === 'INVALID_MISSION' && error.statusCode === 400,
+      );
       assert.equal(movement.formationId, null);
       assert.equal(
         String((await fleets.launch(user._id, order))._id),

@@ -15,11 +15,25 @@ for (const width of [320, 390, 1440]) {
       catalog.hydrate({ revision: 1, entities: [] });
       const state = window.gameState;
       Object.assign(state.planet, { id: 'home', name: '지구', galaxy: 1, system: 1, planet: 7 });
-      state.planets = [{ _id: 'home', name: '지구', galaxy: 1, system: 1, planet: 7 }, { _id: 'colony', name: '제2거점', galaxy: 3, system: 20, planet: 4 }];
+      state.planets = [
+        { _id: 'colony', name: '제2거점', galaxy: 3, system: 20, planet: 4 },
+        { _id: 'twelve', name: '12성계', galaxy: 1, system: 12, planet: 3 },
+        { _id: 'outer', name: '외곽', galaxy: 1, system: 2, planet: 15 },
+        { _id: 'home', name: '지구', galaxy: 1, system: 1, planet: 7 },
+        { _id: 'inner', name: 'Colony-with-a-very-long-planet-name-'.repeat(4), galaxy: 1, system: 2, planet: 4 },
+      ];
+      state.currentPlanet = 3;
+      window.uiManager.renderPlanetArea();
       document.getElementById('auth-screen').classList.add('hidden');
       document.getElementById('ui-layer').classList.remove('hidden');
       window.uiManager.switchView('combat');
     }, { catalogUrl });
+    const planetSelect = page.locator('#planet-select');
+    expect(await planetSelect.locator('option').evaluateAll(options => options.map(option => option.value)))
+      .toEqual(['3', '4', '2', '1', '0']);
+    await expect(planetSelect).toHaveValue('3');
+    expect(await page.evaluate(() => window.gameState.planets.map(planet => planet._id)))
+      .toEqual(['colony', 'twelve', 'outer', 'home', 'inner']);
     const nav = page.locator('#strike-map .system-nav');
     await expect(nav.locator('.system-location')).toHaveText('1 은하 · 1 성계');
     await expect(nav.locator(':scope > button')).toHaveCount(4);
@@ -46,13 +60,30 @@ for (const width of [320, 390, 1440]) {
     await nav.locator('.system-arrow').last().click();
     await expect(nav.locator('.system-location')).toHaveText('2 은하 · 150 성계');
     await nav.locator('.system-home').click();
+    await expect(picker).toBeVisible();
+    await expect(picker).toHaveAttribute('aria-label', '내 행성 선택');
+    await expect(nav.locator('.system-home')).toHaveAttribute('aria-expanded', 'true');
+    await expect(nav.locator('.system-location')).toHaveText('2 은하 · 150 성계');
+    await expect(picker.locator('.system-picker-fields')).toBeHidden();
+    const sortedCoordinates = ['[1:1:7]', '[1:2:4]', '[1:2:15]', '[1:12:3]', '[3:20:4]'];
+    await expect(picker.locator('.system-shortcuts small')).toHaveText(sortedCoordinates);
+    expect(await picker.evaluate(el => {
+      const rect = el.getBoundingClientRect();
+      return rect.left >= 12 && rect.right <= innerWidth - 12
+        && rect.top >= 12 && rect.bottom <= innerHeight - 12
+        && [el, ...el.querySelectorAll('.system-shortcuts, .system-shortcuts > div, .system-shortcuts button')]
+          .every(node => node.scrollWidth <= node.clientWidth);
+    })).toBe(true);
+    await page.screenshot({ path: `/tmp/o3game-owned-planets-${width}.png` });
+    await picker.getByRole('button', { name: '지구 [1:1:7]', exact: true }).click();
     await expect(nav.locator('.system-location')).toHaveText('1 은하 · 1 성계');
-    await nav.locator('.system-location').click();
+    await nav.locator('.system-home').click();
     await page.locator('.system-picker:popover-open').getByRole('button', { name: '제2거점 [3:20:4]', exact: true }).click();
     await expect(nav.locator('.system-location')).toHaveText('3 은하 · 20 성계');
     await expect(page.locator('#strike-map .strike-confirm')).toContainText('제2거점');
     expect(await page.evaluate(() => window.uiManager.strikeMap.target)).toBe(4);
     await nav.locator('.system-location').click();
+    await expect(picker.locator('.system-shortcuts small')).toHaveText(sortedCoordinates);
     await nav.locator('.system-location').click();
     await expect(page.locator('.system-picker:popover-open')).toHaveCount(0);
     await page.screenshot({ path: `/tmp/o3game-compact-operations-${width}.png` });
@@ -63,7 +94,28 @@ for (const width of [320, 390, 1440]) {
     await expect(galaxyNav.locator(':scope > button')).toHaveCount(4);
     expect(await galaxyNav.evaluate(el => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().height <= 50)).toBe(true);
     await galaxyNav.locator('.system-location').click();
+    if (width < 700) {
+      const coordinateInput = picker.locator('input[type=number]');
+      await coordinateInput.focus();
+      await coordinateInput.fill('123');
+      // Mobile keyboards resize the viewport while the coordinate field is focused.
+      await page.setViewportSize({ width, height: 500 });
+      await expect(picker).toBeVisible();
+      await expect(coordinateInput).toBeFocused();
+      await expect(coordinateInput).toHaveValue('123');
+      await expect.poll(() => picker.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.top >= 12 && rect.bottom <= innerHeight - 12;
+      })).toBe(true);
+      await page.setViewportSize({ width, height: 900 });
+      await expect(picker).toBeVisible();
+      await expect(coordinateInput).toHaveValue('123');
+    }
     await page.keyboard.press('Escape');
+    await expect(page.locator('.system-picker:popover-open')).toHaveCount(0);
+    await galaxyNav.locator('.system-home').click();
+    await expect(picker.locator('.system-shortcuts small')).toHaveText(sortedCoordinates);
+    await galaxyNav.locator('.system-home').click();
     await expect(page.locator('.system-picker:popover-open')).toHaveCount(0);
   });
 }

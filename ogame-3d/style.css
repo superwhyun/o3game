@@ -1256,6 +1256,9 @@ body.esm-mode *::after {
     gap: 4px;
     padding: 6px;
     overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x pinch-zoom;
+    overscroll-behavior: none;
     scrollbar-width: none;
   }
 

@@ -10,6 +10,7 @@ import { battleOutcome, reportIsRead } from './views/battleReports.js';
 import { ImprovementRequestsView } from './views/ImprovementRequestsView.js';
 import { renderAreaWarning } from './views/areaWarning.js';
 import { createRequestId } from '../utils/requestId.js';
+import { comparePlanetCoordinates } from '../utils/planetCoordinates.js';
 import './population.css';
 import './command-controls.css';
 import { renderPopulationDetails, POPULATION_SETTING_LABELS } from './views/populationDetails.js';
@@ -1315,8 +1316,6 @@ export class UIManager {
       getHome:()=>({...gameState.planet}),
       getPlanets: () => gameState.planets,
       getResources: () => gameState.resources,
-      getDevelopment: () => ({ terraformLevel: gameState.research.terraforming || 0, bonusFields: gameState.areaSettings.bonusUsableFields }),
-      onScout: target => { void this.showGalaxyTarget(target); },
       getFormations:()=>gameState.fleetFormations.filter(f=>f.status==='ready'&&String(f.originPlanetId)===String(gameState.planet.id)&&profileOf(f.ships).ships>0),
       isPending:id=>Boolean(this.pendingOrders()[id]),
       getBase: id => gameState.planets.find(p => String(p._id) === String(id)),
@@ -1582,7 +1581,9 @@ export class UIManager {
     const modifiers = gameState.planet.productionModifiers;
     const select = document.getElementById('planet-select');
     if (select && document.activeElement !== select) {
-      select.innerHTML = (gameState.planets || []).map((p, index) => `<option value="${index}" ${index === gameState.currentPlanet ? 'selected' : ''}>${escapeHtml(p.name)} [${p.galaxy}:${p.system}:${p.planet}]</option>`).join('');
+      const planets = (gameState.planets || []).map((planet, index) => ({ planet, index }))
+        .sort((a, b) => comparePlanetCoordinates(a.planet, b.planet));
+      select.innerHTML = planets.map(({ planet: p, index }) => `<option value="${index}" ${index === Number(gameState.currentPlanet) ? 'selected' : ''}>${escapeHtml(p.name)} [${p.galaxy}:${p.system}:${p.planet}]</option>`).join('');
     }
     if (select && !select.onchange) select.onchange = async () => {
       select.disabled = true;
